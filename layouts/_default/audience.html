@@ -1,0 +1,80 @@
+{{ define "bodyClass" }}page-audience{{ end }}
+{{ define "main" }}
+{{ $p := .Params }}
+<section class="page-hero spk-on-dark">
+  <div class="container">
+    <p class="spk-kicker">{{ $p.kicker }}</p>
+    <h1>{{ $p.headline }}</h1>
+    <p class="hero__lede">{{ $p.intro | markdownify }}</p>
+    <div class="btn-row">
+      {{ with $p.primary }}<a class="spk-btn spk-btn--on-dark spk-btn--lg" href="{{ partial "url.html" .url }}">{{ .label }}</a>{{ end }}
+      {{ with $p.secondary }}<a class="spk-btn spk-btn--outline-light spk-btn--lg" href="{{ partial "url.html" .url }}">{{ .label }}</a>{{ end }}
+    </div>
+  </div>
+</section>
+
+{{ with $p.pain }}
+<section class="section">
+  <div class="container split">
+    {{ partial "section-head.html" (dict "kicker" .kicker "title" .title) }}
+    <div class="prose">
+      {{ range .paragraphs }}<p>{{ . | markdownify }}</p>{{ end }}
+      {{ with .callout }}<div class="spk-card spk-card--attention callout"><p>{{ . | markdownify }}</p></div>{{ end }}
+    </div>
+  </div>
+</section>
+{{ end }}
+
+{{ with $p.proof }}
+<section class="section section--white">
+  <div class="container">
+    {{ partial "section-head.html" (dict "kicker" .kicker "title" .title "lede" .lede) }}
+    <div class="card-grid">
+      {{ range .items }}
+      <div class="spk-card feature">
+        <span class="feature__icon">{{ partial "icon.html" (dict "name" (.icon | default "check") "size" 20) }}</span>
+        <h3 class="spk-card__title">{{ .title }}</h3>
+        <p class="spk-card__body">{{ .text | markdownify }}</p>
+      </div>
+      {{ end }}
+    </div>
+  </div>
+</section>
+{{ end }}
+
+{{ with $p.roadmap }}
+<section class="section">
+  <div class="container split">
+    {{ partial "section-head.html" (dict "kicker" .kicker "title" .title) }}
+    <div>
+      <p>{{ .text | markdownify }}</p>
+      <ul class="roadmap-list">{{ range .items }}<li><span class="spk-pill spk-pill--sm spk-pill--warning">{{ i18n "coming_soon" }}</span> {{ . }}</li>{{ end }}</ul>
+    </div>
+  </div>
+</section>
+{{ end }}
+
+{{ if $p.show_courses }}
+<section class="section">
+  <div class="container">
+    {{ partial "section-head.html" (dict "kicker" "Courses" "title" ($p.courses_title | default "Courses")) }}
+    <div class="course-grid">
+      {{ range where site.RegularPages "Section" "courses" }}
+        {{ if or (not $p.course_filter) (in $p.course_filter .File.ContentBaseName) }}{{ partial "course-card.html" . }}{{ end }}
+      {{ end }}
+    </div>
+  </div>
+</section>
+{{ end }}
+
+{{ with $p.faq }}
+<section class="section section--white">
+  <div class="container container--reading">
+    {{ partial "section-head.html" (dict "kicker" "FAQ" "title" "What people ask us") }}
+    {{ partial "faq.html" . }}
+  </div>
+</section>
+{{ end }}
+
+{{ with $p.closing }}{{ partial "cta-band.html" . }}{{ end }}
+{{ end }}

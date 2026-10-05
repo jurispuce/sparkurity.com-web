@@ -1,0 +1,4 @@
+{{ define "main" }}
+<section class="page-hero page-hero--light"><div class="container"><h1>{{ .Title }}</h1></div></section>
+<section class="section"><div class="container prose">{{ .Content }}<ul>{{ range .Pages }}<li><a href="{{ .RelPermalink }}">{{ .Title }}</a></li>{{ end }}</ul></div></section>
+{{ end }}

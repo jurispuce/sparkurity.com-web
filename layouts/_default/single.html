@@ -1,0 +1,14 @@
+{{ define "main" }}
+<section class="page-hero page-hero--light">
+  <div class="container container--reading">
+    {{ with .Params.kicker }}<p class="spk-kicker">{{ . }}</p>{{ end }}
+    <h1>{{ .Title }}</h1>
+    {{ with .Params.intro }}<p class="lede">{{ . | markdownify }}</p>{{ end }}
+  </div>
+</section>
+<article class="section">
+  <div class="container container--reading prose">
+    {{ .Content }}
+  </div>
+</article>
+{{ end }}

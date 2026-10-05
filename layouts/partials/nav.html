@@ -1,0 +1,29 @@
+<header class="nav" data-nav>
+  <div class="container nav__inner">
+    <a class="nav__brand" href="{{ "/" | relLangURL }}" aria-label="Sparkurity home">
+      <img src="{{ "sparkurity/assets/logo/sparkurity-logo.svg" | relURL }}" alt="Sparkurity" width="168" height="24">
+    </a>
+    <button class="nav__toggle" type="button" aria-expanded="false" aria-controls="nav-menu" data-nav-toggle>
+      <span class="visually-hidden">Menu</span><span></span><span></span><span></span>
+    </button>
+    <nav class="nav__menu" id="nav-menu" aria-label="Main">
+      <ul class="nav__links">
+        {{- $current := . }}
+        {{- range site.Menus.main }}
+        <li><a href="{{ .URL | relLangURL }}"{{ if or ($current.IsMenuCurrent "main" .) (hasPrefix $current.RelPermalink .URL) }} aria-current="page"{{ end }}>{{ .Name }}</a></li>
+        {{- end }}
+      </ul>
+      <div class="nav__actions">
+        {{- if gt (len site.Languages) 1 }}
+        <ul class="nav__lang">
+          {{- range .AllTranslations }}
+          <li><a href="{{ .RelPermalink }}" hreflang="{{ .Language.Lang }}"{{ if eq .Language.Lang $.Language.Lang }} aria-current="true"{{ end }}>{{ upper .Language.Lang }}</a></li>
+          {{- end }}
+        </ul>
+        {{- end }}
+        <a class="nav__signin" href="{{ site.Params.platformURL }}">{{ i18n "sign_in" }}</a>
+        <a class="spk-btn spk-btn--primary" href="{{ site.Params.contactPath | relLangURL }}">{{ i18n "book_demo" }}</a>
+      </div>
+    </nav>
+  </div>
+</header>

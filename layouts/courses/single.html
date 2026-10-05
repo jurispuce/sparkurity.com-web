@@ -1,0 +1,148 @@
+{{ define "bodyClass" }}page-course{{ end }}
+{{ define "main" }}
+{{ $p := .Params }}
+{{ $cohort := eq $p.format "cohort" }}
+{{ $primaryLabel := i18n "start_now" }}
+{{ if $cohort }}{{ $primaryLabel = i18n "register_interest" }}{{ with $p.next_cohort }}{{ $primaryLabel = printf "%s — %s" (i18n "join_cohort") (time.Format "2 January 2006" .) }}{{ end }}{{ end }}
+
+<section class="page-hero spk-on-dark">
+  <div class="container course-hero">
+    <div>
+      <nav class="spk-breadcrumb" aria-label="Breadcrumb">
+        <a href="{{ "/courses/" | relLangURL }}">Courses</a><span class="sep">/</span><span>{{ .Title }}</span>
+      </nav>
+      <h1>{{ $p.headline }}</h1>
+      <p class="hero__lede">{{ $p.intro | markdownify }}</p>
+      <div class="btn-row">
+        <a class="spk-btn spk-btn--on-dark spk-btn--lg" href="{{ site.Params.platformURL }}">{{ $primaryLabel }}</a>
+        {{ with $p.org_cta }}<a class="spk-btn spk-btn--outline-light spk-btn--lg" href="{{ site.Params.contactPath | relLangURL }}">{{ . }}</a>{{ end }}
+      </div>
+    </div>
+    <aside class="facts" aria-label="Course facts">
+      <p class="facts__title">{{ .Title }}</p>
+      <dl>
+        <div><dt>{{ i18n "format" }}</dt><dd>{{ if $cohort }}{{ i18n "cohort" }}{{ else }}{{ i18n "self_paced" }}{{ end }}</dd></div>
+        <div><dt>{{ i18n "length" }}</dt><dd>{{ $p.length }}</dd></div>
+        {{ with $p.live_hours }}<div><dt>{{ i18n "live_hours" }}</dt><dd>{{ . }}</dd></div>{{ end }}
+        <div><dt>{{ i18n "languages" }}</dt><dd>{{ delimit (apply $p.languages "upper" ".") " / " }}</dd></div>
+        {{ with $p.next_cohort }}<div><dt>{{ i18n "next_cohort" }}</dt><dd>{{ time.Format "2 Jan 2006" . }}</dd></div>{{ end }}
+      </dl>
+      {{ with $p.frameworks }}<div class="facts__chips">{{ range . }}<span class="spk-pill spk-pill--sm">{{ . }}</span>{{ end }}</div>{{ end }}
+    </aside>
+  </div>
+</section>
+
+<nav class="spk-subnav" aria-label="On this page">
+  <div class="container spk-subnav__inner">
+    <a href="#who">{{ i18n "who_for" }}</a>
+    <a href="#outcomes">Outcomes</a>
+    <a href="#adapts">Adaptive path</a>
+    {{ if $p.roles }}<a href="#roles">Roles</a>{{ end }}
+    {{ if $p.schedule }}<a href="#schedule">Schedule</a>{{ end }}
+    {{ if $p.modules }}<a href="#modules">{{ i18n "modules" }}</a>{{ end }}
+    <a href="#format">{{ i18n "format" }}</a>
+    {{ if $p.faq }}<a href="#faq">FAQ</a>{{ end }}
+  </div>
+</nav>
+
+<div class="container course-body">
+  <section id="who" class="course-sec">
+    <h2>{{ i18n "who_for" }}</h2>
+    <p>{{ $p.who_for | markdownify }}</p>
+  </section>
+
+  <section id="outcomes" class="course-sec">
+    <h2>{{ i18n "outcomes" }}</h2>
+    <ul class="checklist checklist--cards">
+      {{ range $p.outcomes }}<li>{{ partial "icon.html" (dict "name" "check" "size" 18) }}<span>{{ . | markdownify }}</span></li>{{ end }}
+    </ul>
+  </section>
+
+  <section id="adapts" class="course-sec">
+    <h2>{{ i18n "adapts" }}</h2>
+    <div class="spk-card spk-card--tint adapt">
+      <p>{{ $p.adapts | markdownify }}</p>
+      <div class="levels" aria-label="Exercise levels">
+        <span class="spk-pill spk-pill--sm">Worked example</span><span class="levels__sep">→</span>
+        <span class="spk-pill spk-pill--sm">Completion task</span><span class="levels__sep">→</span>
+        <span class="spk-pill spk-pill--sm spk-pill--navy">Independent task</span>
+      </div>
+    </div>
+  </section>
+
+  {{ with $p.roles }}
+  <section id="roles" class="course-sec">
+    <h2>{{ i18n "your_role" }}</h2>
+    <p>{{ .intro | markdownify }}</p>
+    <div class="roles">
+      {{ range .list }}
+      <div class="spk-card spk-card--sm">
+        <span class="spk-meta">Role</span>
+        <h3 class="spk-card__title">{{ .name }}</h3>
+        <p class="spk-card__body">{{ .desc }}</p>
+      </div>
+      {{ end }}
+    </div>
+  </section>
+  {{ end }}
+
+  {{ with $p.schedule }}
+  <section id="schedule" class="course-sec">
+    <h2>{{ .title }}</h2>
+    <div class="spk-table-wrap table-scroll">
+      <table class="spk-table">
+        <thead><tr>{{ range .columns }}<th scope="col">{{ . }}</th>{{ end }}</tr></thead>
+        <tbody>{{ range .rows }}<tr>{{ range $i, $c := . }}{{ if eq $i 0 }}<th scope="row">{{ $c }}</th>{{ else }}<td>{{ $c }}</td>{{ end }}{{ end }}</tr>{{ end }}</tbody>
+      </table>
+    </div>
+  </section>
+  {{ end }}
+
+  {{ with $p.modules }}
+  <section id="modules" class="course-sec">
+    <h2>{{ i18n "modules" }}</h2>
+    <ol class="modules">
+      {{ range $i, $m := . }}
+      <li class="spk-lesson">
+        <span class="spk-lesson__seq">{{ printf "%02d" (add $i 1) }}</span>
+        <span class="modules__text">
+          <span class="spk-lesson__title">{{ $m.name }}</span>
+          {{ with $m.line }}<span class="spk-lesson__desc">{{ . }}</span>{{ end }}
+        </span>
+        {{ with $m.time }}<span class="spk-meta">{{ . }}</span>{{ end }}
+      </li>
+      {{ end }}
+    </ol>
+  </section>
+  {{ end }}
+
+  <section id="format" class="course-sec">
+    <h2>{{ i18n "format" }} &amp; {{ lower (i18n "time_commitment") }}</h2>
+    <p>{{ $p.time_commitment | markdownify }}</p>
+    {{ with $p.instructor }}
+    <div class="instructor spk-card">
+      <span class="instructor__avatar">{{ partial "icon.html" (dict "name" "user" "size" 22) }}</span>
+      <div>
+        <span class="spk-meta">{{ i18n "instructor" }}</span>
+        <h3 class="spk-card__title">{{ .name }}</h3>
+        <p class="spk-card__body">{{ .bio | markdownify }}</p>
+      </div>
+    </div>
+    {{ end }}
+  </section>
+
+  {{ with $p.faq }}
+  <section id="faq" class="course-sec">
+    <h2>{{ i18n "faq" }}</h2>
+    {{ partial "faq.html" . }}
+  </section>
+  {{ end }}
+</div>
+
+{{ partial "cta-band.html" (dict
+  "title" .Title
+  "text" $p.card_line
+  "primary" (dict "label" $primaryLabel "url" "platform")
+  "secondary" (cond (ne ($p.org_cta | default "") "") (dict "label" ($p.org_cta | default "") "url" "contact") false)
+) }}
+{{ end }}

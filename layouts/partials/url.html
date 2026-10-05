@@ -1,0 +1,6 @@
+{{/* Resolves link tokens used in content: "platform", "contact", or a path/URL. */}}
+{{- $u := . -}}
+{{- if eq $u "platform" -}}{{ site.Params.platformURL }}
+{{- else if eq $u "contact" -}}{{ site.Params.contactPath | relLangURL }}
+{{- else if hasPrefix $u "/" -}}{{ $u | relLangURL }}
+{{- else -}}{{ $u }}{{- end -}}

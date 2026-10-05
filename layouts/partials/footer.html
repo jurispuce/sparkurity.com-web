@@ -1,0 +1,30 @@
+<footer class="site-footer spk-on-dark">
+  <div class="container site-footer__grid">
+    <div>
+      <img src="{{ "sparkurity/assets/logo/sparkurity-logo-white.svg" | relURL }}" alt="Sparkurity" width="168" height="24">
+      <p class="site-footer__tagline">{{ i18n "footer_tagline" }}</p>
+    </div>
+    <div>
+      <p class="spk-meta">{{ i18n "footer_platform" }}</p>
+      <ul>
+        <li><a href="{{ "/courses/" | relLangURL }}">{{ i18n "explore_courses" }}</a></li>
+        <li><a href="{{ "/for-organisations/" | relLangURL }}">For organisations</a></li>
+        <li><a href="{{ "/for-instructors/" | relLangURL }}">For instructors</a></li>
+        <li><a href="{{ "/for-professionals/" | relLangURL }}">For professionals</a></li>
+      </ul>
+    </div>
+    <div>
+      <p class="spk-meta">{{ i18n "footer_company" }}</p>
+      <ul>
+        <li><a href="{{ "/approach/" | relLangURL }}">Our approach</a></li>
+        <li><a href="{{ site.Params.contactPath | relLangURL }}">{{ i18n "contact" }}</a></li>
+        <li><a href="{{ "/privacy/" | relLangURL }}">{{ i18n "privacy" }}</a></li>
+        <li><a href="{{ "/terms/" | relLangURL }}">{{ i18n "terms" }}</a></li>
+      </ul>
+    </div>
+  </div>
+  <div class="container site-footer__base">
+    <span>© {{ now.Year }} {{ site.Params.legalEntity }}</span>
+    <span>Courses in Latvian and English</span>
+  </div>
+</footer>

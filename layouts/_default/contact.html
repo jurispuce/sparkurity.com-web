@@ -1,0 +1,34 @@
+{{ define "main" }}
+<section class="page-hero spk-on-dark">
+  <div class="container">
+    <p class="spk-kicker">{{ .Params.kicker }}</p>
+    <h1>{{ .Title }}</h1>
+    <p class="hero__lede">{{ .Params.intro | markdownify }}</p>
+  </div>
+</section>
+<section class="section">
+  <div class="container split">
+    <div>
+      {{ partial "section-head.html" (dict "title" .Params.aside_title) }}
+      <ul class="checklist">{{ range .Params.aside_points }}<li>{{ partial "icon.html" (dict "name" "check" "size" 18) }}<span>{{ . }}</span></li>{{ end }}</ul>
+      <p class="muted">Prefer email? <a href="mailto:{{ site.Params.contactEmail }}">{{ site.Params.contactEmail }}</a></p>
+    </div>
+    <form class="spk-card contact-form" name="contact" method="POST" data-netlify="true" netlify-honeypot="company_url" action="{{ "/contact/thanks/" | relLangURL }}">
+      <input type="hidden" name="form-name" value="contact">
+      <p class="visually-hidden"><label>Leave empty <input name="company_url"></label></p>
+      <div class="spk-field"><label class="spk-label" for="f-name">Name</label><input class="spk-input" id="f-name" name="name" autocomplete="name" required></div>
+      <div class="spk-field"><label class="spk-label" for="f-email">Work email</label><input class="spk-input" id="f-email" name="email" type="email" autocomplete="email" required></div>
+      <div class="spk-field"><label class="spk-label" for="f-org">Organisation</label><input class="spk-input" id="f-org" name="organisation" autocomplete="organization"></div>
+      <div class="spk-field">
+        <label class="spk-label" for="f-topic">I'm interested in</label>
+        <select class="spk-input" id="f-topic" name="topic">
+          {{ range .Params.topics }}<option>{{ . }}</option>{{ end }}
+        </select>
+      </div>
+      <div class="spk-field"><label class="spk-label" for="f-msg">Message</label><textarea class="spk-input" id="f-msg" name="message" rows="5"></textarea></div>
+      <button class="spk-btn spk-btn--primary spk-btn--lg" type="submit">Send</button>
+      <p class="spk-meta">We reply within two working days.</p>
+    </form>
+  </div>
+</section>
+{{ end }}

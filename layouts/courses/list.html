@@ -1,0 +1,49 @@
+{{ define "bodyClass" }}page-catalog{{ end }}
+{{ define "main" }}
+<section class="page-hero spk-on-dark">
+  <div class="container">
+    <p class="spk-kicker">{{ .Params.kicker }}</p>
+    <h1>{{ .Title }}</h1>
+    <p class="hero__lede">{{ .Params.intro | markdownify }}</p>
+  </div>
+</section>
+
+<section class="section">
+  <div class="container">
+    <form class="filters" data-filters aria-label="Filter courses">
+      {{ range .Params.filters }}
+      <fieldset class="filters__group">
+        <legend class="spk-meta">{{ .label }}</legend>
+        <div class="spk-segmented" role="group">
+          <button type="button" data-filter="{{ .key }}" data-value="" aria-pressed="true">{{ i18n "all" }}</button>
+          {{ $key := .key }}
+          {{ range .options }}<button type="button" data-filter="{{ $key }}" data-value="{{ .value }}" aria-pressed="false">{{ .label }}</button>{{ end }}
+        </div>
+      </fieldset>
+      {{ end }}
+    </form>
+
+    <div class="course-grid" data-course-grid>
+      {{ range .Pages.ByWeight }}{{ partial "course-card.html" . }}{{ end }}
+    </div>
+    <div class="empty" data-empty hidden>
+      <p>{{ i18n "no_results" }}</p>
+      <button type="button" class="spk-btn spk-btn--secondary" data-reset>{{ i18n "reset_filters" }}</button>
+    </div>
+  </div>
+</section>
+
+{{ with .Params.why_fewer_hours }}
+<section class="section section--white">
+  <div class="container split">
+    {{ partial "section-head.html" (dict "kicker" .kicker "title" .title) }}
+    <div class="prose">
+      <p>{{ .text | markdownify }}</p>
+      <ul class="checklist">{{ range .points }}<li>{{ partial "icon.html" (dict "name" "check" "size" 18) }}<span>{{ . | markdownify }}</span></li>{{ end }}</ul>
+    </div>
+  </div>
+</section>
+{{ end }}
+
+{{ with .Params.closing }}{{ partial "cta-band.html" . }}{{ end }}
+{{ end }}

@@ -1,0 +1,13 @@
+{{/* dict "title" "" "text" "" "primary" (dict label url) "secondary" (dict label url) */}}
+<section class="cta-band spk-on-dark">
+  <div class="container cta-band__inner">
+    <div>
+      <h2>{{ .title }}</h2>
+      {{ with .text }}<p>{{ . | markdownify }}</p>{{ end }}
+    </div>
+    <div class="btn-row">
+      {{ with .primary }}<a class="spk-btn spk-btn--on-dark spk-btn--lg" href="{{ partial "url.html" .url }}">{{ .label }}</a>{{ end }}
+      {{ with .secondary }}<a class="spk-btn spk-btn--outline-light spk-btn--lg" href="{{ partial "url.html" .url }}">{{ .label }}</a>{{ end }}
+    </div>
+  </div>
+</section>

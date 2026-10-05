@@ -1,0 +1,45 @@
+baseURL = 'https://sparkurity.com/'
+title = 'Sparkurity'
+defaultContentLanguage = 'en'
+defaultContentLanguageInSubdir = false
+disableKinds = ['taxonomy', 'term']
+enableRobotsTXT = true
+
+[params]
+  description = 'Training that starts where each learner is. AI adapts the path to prior knowledge and job role; cohorts practise real cases together. Cybersecurity, risk, resilience and AI.'
+  # Placeholder — the Sparkurity training platform (sign-in, enrolment).
+  platformURL = 'https://app.sparkurity.com'
+  contactPath = '/contact/'
+  contactEmail = 'hello@sparkurity.com'   # [confirm]
+  legalEntity = 'Sparkurity'              # [confirm] registered company name
+  hostingLocation = ''                    # e.g. 'in the EU' — leave empty until confirmed
+
+[languages]
+  [languages.en]
+    languageName = 'English'
+    languageCode = 'en'
+    weight = 1
+    [[languages.en.menus.main]]
+      name = 'Courses'
+      url = '/courses/'
+      weight = 10
+    [[languages.en.menus.main]]
+      name = 'For organisations'
+      url = '/for-organisations/'
+      weight = 20
+    [[languages.en.menus.main]]
+      name = 'For instructors'
+      url = '/for-instructors/'
+      weight = 30
+    [[languages.en.menus.main]]
+      name = 'Our approach'
+      url = '/approach/'
+      weight = 40
+  # Latvian — uncomment, add i18n/lv.yaml and *.lv.md content files.
+  # [languages.lv]
+  #   languageName = 'Latviešu'
+  #   languageCode = 'lv'
+  #   weight = 2
+
+[markup.goldmark.renderer]
+  unsafe = true

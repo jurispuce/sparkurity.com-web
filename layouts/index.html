@@ -1,0 +1,174 @@
+{{ define "bodyClass" }}page-home{{ end }}
+{{ define "main" }}
+{{ $p := .Params }}
+
+{{/* ── Hero ── */}}
+{{ with $p.hero }}
+<section class="hero spk-on-dark">
+  <div class="container hero__grid">
+    <div class="hero__text">
+      {{ with .kicker }}<span class="spk-eyebrow">{{ . }}</span>{{ end }}
+      <h1>{{ .title }}</h1>
+      <p class="hero__lede">{{ .text | markdownify }}</p>
+      <div class="btn-row">
+        {{ with .primary }}<a class="spk-btn spk-btn--on-dark spk-btn--lg" href="{{ partial "url.html" .url }}">{{ .label }}</a>{{ end }}
+        {{ with .secondary }}<a class="spk-btn spk-btn--outline-light spk-btn--lg" href="{{ partial "url.html" .url }}">{{ .label }}</a>{{ end }}
+      </div>
+    </div>
+    {{ with .roadmap }}
+    <figure class="roadmap-mock" aria-label="Example personal roadmap">
+      <figcaption class="roadmap-mock__head">
+        <span class="spk-meta">{{ .label }}</span>
+        <span class="spk-pill spk-pill--sm spk-pill--success">{{ .status }}</span>
+      </figcaption>
+      <ol class="roadmap-mock__list">
+        {{ range .modules }}
+        <li data-action="{{ .action }}">
+          <span class="roadmap-mock__name">{{ .name }}</span>
+          <span class="roadmap-mock__tag">{{ .action | humanize }}</span>
+        </li>
+        {{ end }}
+      </ol>
+      <p class="roadmap-mock__foot">{{ .foot }}</p>
+    </figure>
+    {{ end }}
+  </div>
+</section>
+{{ end }}
+
+{{/* ── Audience router ── */}}
+{{ with $p.router }}
+<section class="router" aria-label="Choose your path">
+  <div class="container router__grid">
+    {{ range . }}
+    <a class="router__item" href="{{ partial "url.html" .url }}">
+      <span class="router__icon">{{ partial "icon.html" (dict "name" .icon "size" 22) }}</span>
+      <span>
+        <span class="router__label">{{ .label }}</span>
+        <span class="router__text">{{ .text }}</span>
+      </span>
+      <span class="router__arrow">{{ partial "icon.html" (dict "name" "arrow" "size" 18) }}</span>
+    </a>
+    {{ end }}
+  </div>
+</section>
+{{ end }}
+
+{{/* ── Problem ── */}}
+{{ with $p.problem }}
+<section class="section">
+  <div class="container split">
+    {{ partial "section-head.html" (dict "kicker" .kicker "title" .title) }}
+    <div class="prose">{{ range .paragraphs }}<p>{{ . | markdownify }}</p>{{ end }}</div>
+  </div>
+</section>
+{{ end }}
+
+{{/* ── How it works ── */}}
+{{ with $p.steps }}
+<section class="section section--white" id="how-it-works">
+  <div class="container">
+    {{ partial "section-head.html" (dict "kicker" .kicker "title" .title "lede" .lede) }}
+    <ol class="steps">
+      {{ range $i, $s := .items }}
+      <li class="step">
+        <span class="spk-chip spk-chip--action">{{ add $i 1 }}</span>
+        <h3>{{ $s.title }}</h3>
+        <p>{{ $s.text | markdownify }}</p>
+      </li>
+      {{ end }}
+    </ol>
+  </div>
+</section>
+{{ end }}
+
+{{/* ── Pillars ── */}}
+{{ range $i, $pl := $p.pillars }}
+<section class="section pillar{{ if modBool $i 2 }}{{ else }} pillar--alt{{ end }}" id="{{ $pl.id }}">
+  <div class="container pillar__grid">
+    <div>
+      <p class="spk-kicker">{{ $pl.kicker }}</p>
+      <h2>{{ $pl.title }}</h2>
+      {{ range $pl.paragraphs }}<p>{{ . | markdownify }}</p>{{ end }}
+      {{ with $pl.coming_soon }}
+      <div class="soon">
+        <span class="spk-pill spk-pill--sm spk-pill--warning">{{ i18n "coming_soon" }}</span>
+        <p>{{ . | markdownify }}</p>
+      </div>
+      {{ end }}
+      {{ with $pl.built_on }}<p class="built-on"><span class="spk-meta">{{ i18n "built_on" }}</span> {{ . }}</p>{{ end }}
+      {{ with $pl.link }}<a class="spk-btn spk-btn--ghost" href="{{ partial "url.html" .url }}">{{ .label }} →</a>{{ end }}
+    </div>
+    <ul class="pillar__points">
+      {{ range $pl.points }}
+      <li class="spk-card">
+        <h3 class="spk-card__title">{{ .title }}</h3>
+        <p class="spk-card__body">{{ .text }}</p>
+      </li>
+      {{ end }}
+    </ul>
+  </div>
+</section>
+{{ end }}
+
+{{/* ── Formats ── */}}
+{{ with $p.formats }}
+<section class="section section--white">
+  <div class="container">
+    {{ partial "section-head.html" (dict "kicker" .kicker "title" .title "lede" .lede) }}
+    <div class="formats">
+      {{ range .items }}
+      <div class="format-card{{ if eq .key "cohort" }} format-card--brand spk-on-dark{{ end }}">
+        <span class="spk-meta">{{ .label }}</span>
+        <h3>{{ .title }}</h3>
+        <dl>
+          {{ range .rows }}<div><dt>{{ .k }}</dt><dd>{{ .v }}</dd></div>{{ end }}
+        </dl>
+      </div>
+      {{ end }}
+    </div>
+  </div>
+</section>
+{{ end }}
+
+{{/* ── Featured courses ── */}}
+{{ with $p.courses }}
+<section class="section">
+  <div class="container">
+    {{ partial "section-head.html" (dict "kicker" .kicker "title" .title "lede" .lede) }}
+    <div class="course-grid">
+      {{ range where site.RegularPages "Section" "courses" }}{{ partial "course-card.html" . }}{{ end }}
+    </div>
+    <p class="center-link"><a class="spk-btn spk-btn--secondary" href="{{ "/courses/" | relLangURL }}">{{ i18n "explore_courses" }} →</a></p>
+  </div>
+</section>
+{{ end }}
+
+{{/* ── Evidence ── */}}
+{{ with $p.evidence }}{{ partial "evidence.html" . }}{{ end }}
+
+{{/* ── Trust ── */}}
+{{ with $p.trust }}
+<section class="section">
+  <div class="container split">
+    {{ partial "section-head.html" (dict "kicker" .kicker "title" .title) }}
+    <ul class="checklist">
+      {{ range .points }}<li>{{ partial "icon.html" (dict "name" "check" "size" 18) }}<span>{{ . | markdownify }}</span></li>{{ end }}
+      {{ with site.Params.hostingLocation }}<li>{{ partial "icon.html" (dict "name" "check" "size" 18) }}<span>Self-hosted {{ . }}.</span></li>{{ end }}
+    </ul>
+  </div>
+</section>
+{{ end }}
+
+{{/* ── FAQ ── */}}
+{{ with $p.faq }}
+<section class="section section--white">
+  <div class="container container--reading">
+    {{ partial "section-head.html" (dict "kicker" "FAQ" "title" (i18n "faq")) }}
+    {{ partial "faq.html" . }}
+  </div>
+</section>
+{{ end }}
+
+{{ with $p.closing }}{{ partial "cta-band.html" . }}{{ end }}
+{{ end }}

@@ -1,0 +1,25 @@
+{{- $p := . -}}
+{{- $cohort := eq .Params.format "cohort" -}}
+<article class="course-card"
+  data-topic="{{ delimit (.Params.topic | default slice) " " }}"
+  data-format="{{ .Params.format }}"
+  data-audience="{{ delimit (.Params.audience | default slice) " " }}"
+  data-language="{{ delimit (.Params.languages | default slice) " " }}">
+  <div class="course-card__top">
+    <span class="spk-pill spk-pill--sm {{ if $cohort }}spk-pill--petrol{{ else }}spk-pill--info{{ end }}">{{ if $cohort }}{{ i18n "cohort" }}{{ else }}{{ i18n "self_paced" }}{{ end }}</span>
+    <span class="spk-meta">{{ .Params.length }}</span>
+  </div>
+  <h3 class="course-card__title"><a href="{{ .RelPermalink }}">{{ .Title }}</a></h3>
+  <p class="course-card__line">{{ .Params.card_line }}</p>
+  <div class="course-card__badges">
+    {{- range .Params.languages }}<span class="spk-pill spk-pill--sm">{{ upper . }}</span>{{ end }}
+    {{- range first 3 (.Params.frameworks | default slice) }}<span class="spk-pill spk-pill--sm spk-pill--calm">{{ . }}</span>{{ end }}
+  </div>
+  <div class="course-card__foot">
+    <a class="spk-btn spk-btn--secondary spk-btn--sm" href="{{ .RelPermalink }}">
+      {{- if $cohort -}}
+        {{- with .Params.next_cohort }}{{ i18n "join_cohort" }} — {{ time.Format "2 Jan" . }}{{ else }}{{ i18n "register_interest" }}{{ end -}}
+      {{- else -}}{{ i18n "start_now" }}{{- end -}}
+    </a>
+  </div>
+</article>

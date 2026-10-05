@@ -1,0 +1,6 @@
+{{/* dict "kicker" "" "title" "" "lede" "" "center" bool */}}
+<div class="section-head{{ if .center }} section-head--center{{ end }}">
+  {{ with .kicker }}<p class="spk-kicker">{{ . }}</p>{{ end }}
+  {{ with .title }}<h2>{{ . | markdownify }}</h2>{{ end }}
+  {{ with .lede }}<p class="lede">{{ . | markdownify }}</p>{{ end }}
+</div>

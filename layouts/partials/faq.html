@@ -1,0 +1,9 @@
+{{/* slice of dict q/a */}}
+<div class="faq">
+  {{- range . }}
+  <details class="spk-details">
+    <summary>{{ .q }}</summary>
+    <div class="spk-details__body">{{ .a | markdownify }}</div>
+  </details>
+  {{- end }}
+</div>

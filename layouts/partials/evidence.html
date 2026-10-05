@@ -1,0 +1,15 @@
+<section class="section evidence spk-on-dark">
+  <div class="container">
+    {{ partial "section-head.html" (dict "kicker" .kicker "title" .title "lede" .lede) }}
+    <ul class="evidence__grid">
+      {{ range .items }}
+      <li>
+        <h3>{{ .name }}</h3>
+        <p>{{ .text }}</p>
+        <span class="spk-meta">{{ .cite }}</span>
+      </li>
+      {{ end }}
+    </ul>
+    {{ with .link }}<p><a class="spk-btn spk-btn--on-dark" href="{{ partial "url.html" .url }}">{{ .label }} →</a></p>{{ end }}
+  </div>
+</section>
