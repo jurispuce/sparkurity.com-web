@@ -8,7 +8,7 @@ Source: *Sparkurity Training Platform — Messaging & Website Copy* (2 Oct 2026)
 |---|---|
 | Repo | Separate repo `jurispuce/sparkurity.com-web`. jurispuce.com stays as is. |
 | Stack | Hugo 0.120.4 (same as jurispuce.com), no theme, no build step for CSS. Netlify, same pattern as jurispuce.com. |
-| Design system | Copied into this repo: `static/sparkurity/` (tokens + `spk-*` components + logos), `design-system/templates/`, `.claude/skills/sparkurity-design/`. Marketing layout lives in `static/css/site.css` and only reads tokens. The canonical copy is in jurispuce.com (lessons link `https://jurispuce.com/sparkurity/styles.css`); keep the two in sync until the LMS moves. |
+| Design system | Lives **only** in this repo: `static/sparkurity/` (tokens + `spk-*` components + logos, served at `https://sparkurity.com/sparkurity/`), `design-system/templates/`, `.claude/skills/sparkurity-design/`. Marketing layout lives in `static/css/site.css` and only reads tokens. Lesson templates link `https://sparkurity.com/sparkurity/styles.css`. |
 | CTAs | "Start now", "Join next cohort", "Sign in" go to the platform. URL is a placeholder: `params.platformURL` in `hugo.toml`. "Book a demo" / "Talk to us" go to `/contact/`. |
 | Languages | English at launch, LV-ready: all UI strings in `i18n/en.yaml`, all copy in content front matter. Adding Latvian = uncomment `[languages.lv]`, add `i18n/lv.yaml` and `*.lv.md` files. No layout changes. |
 | Instructors | Instructor pillar on the homepage **and** a dedicated `/for-instructors/` page. |

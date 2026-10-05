@@ -3,21 +3,95 @@ title: Our approach
 kicker: Methodology
 description: The learning-science research Sparkurity is designed on — adaptive tutoring, expertise reversal, mastery learning, retrieval practice, collaboration and blended learning — with full references.
 intro: Sparkurity is designed on findings from meta-analyses, not single studies. Most of that evidence comes from school and university learners rather than employees, so we say the platform is *designed on* these findings — never that it guarantees their effect sizes.
+layout: approach
+learning_graph:
+  kicker: The learning graph
+  title: How one learner moves through a course.
+  lede: Five steps and one loop. Every step is built on a research finding — follow the tags to the evidence below. Where the AI suggests, the instructor decides.
+  steps:
+    - title: Profile
+      text: Field of work, role, experience and goals. Required before enrolment.
+      cite: { label: Relevance, href: "#cases-that-fit" }
+    - title: Skill check
+      text: A diagnostic quiz across the whole course produces a knowledge note per module.
+      approval: Instructor approves the quiz
+      cite: { label: Expertise reversal, href: "#expertise-reversal" }
+    - title: Personal roadmap
+      text: Each module is marked with one of four actions.
+      approval: Instructor approves every skip
+      actions: [skip, review_carefully, standard_pace, focus_area]
+      cite: { label: Adaptive tutoring, href: "#adaptive-tutoring" }
+    - title: Adaptive modules
+      text: Retrieval checks inside lessons. Exercises fade from support to independence.
+      levels: [Worked example, Completion task, Independent task]
+      cite: { label: Worked-example fading, href: "#fading" }
+    - title: Mastery check
+      text: Gate quizzes and rubric-graded written answers before the next phase unlocks.
+      approval: Instructor reviews AI grading
+      cite: { label: Mastery learning, href: "#mastery" }
+  loop:
+    label: Not yet mastered
+    text: "Back to step 3: the roadmap regenerates after a failed gate quiz, or when the instructor flags a submission."
+    cite: { label: Feedback, href: "#feedback" }
+  done: Next phase unlocks
+  cohort_layer:
+    label: Cohort layer
+    text: In cohort courses, the same path runs alongside the group.
+    items: [Role-play scenarios, Cohort discussion, Live sessions]
+    cite: { label: Collaboration, href: "#collaboration" }
+cohort_week:
+  kicker: Cohort usage
+  title: Where the cohort fits in a week of learning.
+  lede: Self-study is individual and adaptive. Live time is for what only a group and an expert can give. Example — week 2 of the Internal Cybersecurity Auditor cohort.
+  phases: [Before the session, Live session (2 h), After the session]
+  lanes:
+    - who: You
+      note: individual, adaptive
+      cells:
+        - "Self-study on ISO 27001 controls and evidence sampling. Skip what your skill check shows you know."
+        - "Play auditor or auditee in an interview role-play, using your role's briefing pack."
+        - "Collect and evaluate evidence for the cohort's simulated audit."
+    - who: Your cohort
+      note: 4–20 peers
+      cells:
+        - "Discussion prompt in the cohort channel: what evidence would convince you?"
+        - "Roles rotate. Each role sees only what that role would really have."
+        - "Compare findings in the discussion thread; challenge each other's evidence."
+    - who: Instructor
+      note: in charge
+      cells:
+        - "Approves roadmaps; the progress heatmap shows who is stuck."
+        - "Runs the session; stops the role-play to critique in the moment."
+        - "Reviews every written assignment; overrides or regrades AI drafts."
+    - who: AI
+      note: suggests, never decides
+      cells:
+        - "Tutor answers from the course material and standards, with citations."
+        - ""
+        - "Drafts rubric-based feedback for the instructor to review."
+  ai_absent: Live time stays human.
+  hours:
+    title: Live contact hours — Internal Cybersecurity Auditor
+    unit: h
+    rows:
+      - { label: Classroom version, value: 32, note: mostly theory }
+      - { label: Sparkurity cohort, value: 8, note: "cases, role-play, critique — plus adaptive self-study" }
+    caption: Fewer hours in the classroom, more time practising. Theory moves into self-study, where experienced participants skip what they already know.
 ---
 
 ## An adaptive path: start where you are
 
-- **Personalised, step-level guidance works.** Intelligent tutoring systems showed a median +0.66 SD over conventional teaching across 50 evaluations (Kulik & Fletcher, 2016) and +0.41 across 107 effects (Ma et al., 2014). Step-based tutors come close to human tutors (VanLehn, 2011).
-- **Experts shouldn't sit through novice content.** Support that helps novices slows experts down — the expertise reversal effect (Kalyuga et al., 2003). In one randomised trial, adaptive skipping raised learning efficiency with no loss in scores (Kerfoot, 2010).
-- **Difficulty grows with competence.** Worked examples fade into independent work as learners improve (Kalyuga, 2007).
-- **Mastery before moving on.** Mastery learning raised achievement across 108 studies, more for learners who start behind (Kulik, Kulik & Bangert-Drowns, 1990).
+- <span id="adaptive-tutoring"></span>**Personalised, step-level guidance works.** Intelligent tutoring systems showed a median +0.66 SD over conventional teaching across 50 evaluations (Kulik & Fletcher, 2016) and +0.41 across 107 effects (Ma et al., 2014). Step-based tutors come close to human tutors (VanLehn, 2011).
+- <span id="expertise-reversal"></span>**Experts shouldn't sit through novice content.** Support that helps novices slows experts down — the expertise reversal effect (Kalyuga et al., 2003). In one randomised trial, adaptive skipping raised learning efficiency with no loss in scores (Kerfoot, 2010).
+- <span id="fading"></span>**Difficulty grows with competence.** Worked examples fade into independent work as learners improve (Kalyuga, 2007).
+- <span id="mastery"></span>**Mastery before moving on.** Mastery learning raised achievement across 108 studies, more for learners who start behind (Kulik, Kulik & Bangert-Drowns, 1990).
 - **Testing yourself beats re-reading.** Retrieval practice shows g = 0.50, and 0.73 with corrective feedback (Rowland, 2014).
-- **Feedback that explains, not just a score.** Highly informative feedback is far more effective than a grade alone (Wisniewski et al., 2020) — and poorly designed feedback can hurt (Kluger & DeNisi, 1996), which is why every AI draft is reviewed.
-- **Cases that fit your job.** Relevance drives motivation and achievement (Göksu & Bolat, 2021); problem-based learning improves skills (Dochy et al., 2003).
+- <span id="feedback"></span>**Feedback that explains, not just a score.** Highly informative feedback is far more effective than a grade alone (Wisniewski et al., 2020) — and poorly designed feedback can hurt (Kluger & DeNisi, 1996), which is why every AI draft is reviewed.
+- <span id="cases-that-fit"></span>**Cases that fit your job.** Relevance drives motivation and achievement (Göksu & Bolat, 2021); problem-based learning improves skills (Dochy et al., 2003).
 
 ## Cohorts: learn with people like you
 
-- **Learning together beats learning alone.** Small-group learning improved achievement and persistence (Springer et al., 1999); computer-supported collaboration improved skills (Chen et al., 2018).
+- <span id="collaboration"></span>**Learning together beats learning alone.** Small-group learning improved achievement and persistence (Springer et al., 1999); computer-supported collaboration improved skills (Chen et al., 2018).
 - **Structured roles make collaboration work.** Collaboration scripts with roles strongly improve collaboration skills (Vogel et al., 2017).
 - **Interaction is what makes online learning work.** Designed interaction improves distance education (Bernard et al., 2009); blended learning outperforms purely face-to-face teaching (Means et al., 2013); social presence is linked to satisfaction and perceived learning (Richardson et al., 2017).
 - **Active work beats lecture.** Active learning raised performance by about 0.47 SD; lecture students were 1.5× more likely to fail (Freeman et al., 2014).

@@ -50,3 +50,15 @@
     });
   }
 })();
+
+// Contact email: assembled only on click so the address never appears in the page source.
+document.querySelectorAll('.reveal-mail').forEach(function (btn) {
+  btn.addEventListener('click', function () {
+    var addr = atob(btn.dataset.mail);
+    var a = document.createElement('a');
+    a.href = 'mailto:' + addr;
+    a.textContent = addr;
+    btn.replaceWith(a);
+    a.focus();
+  });
+});

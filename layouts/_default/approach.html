@@ -1,0 +1,132 @@
+{{ define "bodyClass" }}page-approach{{ end }}
+{{ define "main" }}
+{{ $p := .Params }}
+<section class="page-hero page-hero--light">
+  <div class="container container--reading">
+    {{ with $p.kicker }}<p class="spk-kicker">{{ . }}</p>{{ end }}
+    <h1>{{ .Title }}</h1>
+    {{ with $p.intro }}<p class="lede">{{ . | markdownify }}</p>{{ end }}
+  </div>
+</section>
+
+{{/* ── Learning graph ── */}}
+{{ with $p.learning_graph }}
+<section class="section section--white" id="learning-graph" aria-labelledby="lg-title">
+  <div class="container">
+    <div class="section-head">
+      <p class="spk-kicker">{{ .kicker }}</p>
+      <h2 id="lg-title">{{ .title }}</h2>
+      <p class="lede">{{ .lede }}</p>
+    </div>
+
+    <div class="lgraph">
+      <ol class="lgraph__steps">
+        {{ $done := .done }}
+        {{ range $i, $s := .steps }}
+        <li class="lgraph__node{{ if eq (add $i 1) 5 }} lgraph__node--gate{{ end }}">
+          <div class="lgraph__head">
+            <span class="spk-chip spk-chip--action">{{ add $i 1 }}</span>
+            <h3>{{ $s.title }}</h3>
+          </div>
+          <p>{{ $s.text }}</p>
+          {{ with $s.actions }}
+          <ul class="lgraph__actions">
+            {{ range . }}<li data-action="{{ . }}"><span class="roadmap-mock__tag">{{ humanize . }}</span></li>{{ end }}
+          </ul>
+          {{ end }}
+          {{ with $s.levels }}
+          <ol class="lgraph__levels">
+            {{ range $j, $l := . }}<li style="--lvl: {{ $j }}">{{ $l }}</li>{{ end }}
+          </ol>
+          {{ end }}
+          {{ if and (eq (add $i 1) 5) $done }}<p class="lgraph__exits"><span class="spk-pill spk-pill--sm spk-pill--success">✓ {{ $done }}</span><span class="spk-pill spk-pill--sm spk-pill--warning">↺ or loop back</span></p>{{ end }}
+          {{ with $s.approval }}<p class="lgraph__approval">{{ partial "icon.html" (dict "name" "user" "size" 13) }}{{ . }}</p>{{ end }}
+          <a class="lgraph__cite" href="{{ $s.cite.href }}">{{ $s.cite.label }} ↓</a>
+        </li>
+        {{ end }}
+      </ol>
+
+      <div class="lgraph__outcomes">
+        {{ with .loop }}
+        <div class="lgraph__loop" role="note">
+          <span class="lgraph__loop-label">↺ {{ .label }}</span>
+          <p>{{ .text }} <a class="lgraph__cite" href="{{ .cite.href }}">{{ .cite.label }} ↓</a></p>
+        </div>
+        {{ end }}
+      </div>
+
+      {{ with .cohort_layer }}
+      <div class="lgraph__cohort">
+        <span class="spk-meta">{{ .label }}</span>
+        <p>{{ .text }}</p>
+        <ul>{{ range .items }}<li>{{ partial "icon.html" (dict "name" "users" "size" 15) }}{{ . }}</li>{{ end }}</ul>
+        <a class="lgraph__cite" href="{{ .cite.href }}">{{ .cite.label }} ↓</a>
+      </div>
+      {{ end }}
+    </div>
+  </div>
+</section>
+{{ end }}
+
+{{/* ── Cohort usage ── */}}
+{{ with $p.cohort_week }}
+<section class="section" id="cohort-usage" aria-labelledby="cw-title">
+  <div class="container">
+    <div class="section-head">
+      <p class="spk-kicker">{{ .kicker }}</p>
+      <h2 id="cw-title">{{ .title }}</h2>
+      <p class="lede">{{ .lede }}</p>
+    </div>
+
+    <div class="swim table-scroll">
+      <table class="swim__table">
+        <thead>
+          <tr>
+            <td></td>
+            {{ range $i, $ph := .phases }}<th scope="col"{{ if eq $i 1 }} class="is-live"{{ end }}>{{ $ph }}</th>{{ end }}
+          </tr>
+        </thead>
+        <tbody>
+          {{ $absent := .ai_absent }}
+          {{ range $k, $lane := .lanes }}
+          <tr data-lane="{{ $k }}">
+            <th scope="row"><span class="swim__who">{{ $lane.who }}</span><span class="spk-meta">{{ $lane.note }}</span></th>
+            {{ range $i, $c := $lane.cells }}
+            <td{{ if eq $i 1 }} class="is-live"{{ end }}>{{ if $c }}{{ $c }}{{ else }}<span class="swim__empty">{{ $absent }}</span>{{ end }}</td>
+            {{ end }}
+          </tr>
+          {{ end }}
+        </tbody>
+      </table>
+    </div>
+
+    {{ with .hours }}
+    {{ $max := 0 }}{{ range .rows }}{{ if gt .value $max }}{{ $max = .value }}{{ end }}{{ end }}
+    <figure class="hours">
+      <figcaption class="hours__title">{{ .title }}</figcaption>
+      {{ $unit := .unit }}
+      <div class="hours__rows">
+        {{ range .rows }}
+        <div class="hours__row">
+          <span class="hours__label">{{ .label }}</span>
+          <span class="hours__track">
+            <span class="hours__bar" style="width: {{ div (mul .value 100.0) $max }}%" title="{{ .label }}: {{ .value }} {{ $unit }} live — {{ .note }}" tabindex="0"></span>
+            <span class="hours__value">{{ .value }} {{ $unit }}</span>
+          </span>
+          <span class="hours__note">{{ .note }}</span>
+        </div>
+        {{ end }}
+      </div>
+      <p class="hours__caption">{{ .caption }}</p>
+    </figure>
+    {{ end }}
+  </div>
+</section>
+{{ end }}
+
+<article class="section section--white approach-evidence">
+  <div class="container container--reading prose">
+    {{ .Content }}
+  </div>
+</article>
+{{ end }}

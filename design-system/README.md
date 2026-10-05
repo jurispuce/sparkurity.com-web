@@ -4,7 +4,7 @@ Imported from the Sparkurity design handoff (see `HANDOFF.md` for the original i
 
 | What | Where |
 |---|---|
-| Production CSS (tokens + `spk-*` components), logos, deck shell | `static/sparkurity/` → served at `https://jurispuce.com/sparkurity/` |
+| Production CSS (tokens + `spk-*` components), logos, deck shell | `static/sparkurity/` → served at `https://sparkurity.com/sparkurity/` |
 | Artifact templates (lesson, quiz, flashcards, deck, certificate, email, social…) | `design-system/templates/` |
 | Brand rules, artifact ID spec, Claude skill | `.claude/skills/sparkurity-design/` |
 

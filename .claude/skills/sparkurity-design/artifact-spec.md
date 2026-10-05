@@ -37,7 +37,7 @@ spk.<kind>.<course-slug>.<artifact-slug>[@<semver>]
   "standards": ["ISO 31000"]
 }
 </script>
-<link rel="stylesheet" href="https://jurispuce.com/sparkurity/styles.css">
+<link rel="stylesheet" href="https://sparkurity.com/sparkurity/styles.css">
 ```
 
 `upload-course.js` can read `#spk-artifact` instead of (or to validate) the `meta.yaml` entry.

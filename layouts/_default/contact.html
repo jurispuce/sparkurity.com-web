@@ -11,7 +11,10 @@
     <div>
       {{ partial "section-head.html" (dict "title" .Params.aside_title) }}
       <ul class="checklist">{{ range .Params.aside_points }}<li>{{ partial "icon.html" (dict "name" "check" "size" 18) }}<span>{{ . }}</span></li>{{ end }}</ul>
-      <p class="muted">Prefer email? <a href="mailto:{{ site.Params.contactEmail }}">{{ site.Params.contactEmail }}</a></p>
+      {{- /* Address is never in the HTML as text: base64-encoded and decoded by site.js on click. */}}
+      {{- with site.Params.contactEmail }}
+      <p class="muted">Prefer email? <button type="button" class="spk-btn spk-btn--ghost reveal-mail" data-mail="{{ . | base64Encode }}">{{ i18n "show_email" }}</button></p>
+      {{- end }}
     </div>
     <form class="spk-card contact-form" name="contact" method="POST" data-netlify="true" netlify-honeypot="company_url" action="{{ "/contact/thanks/" | relLangURL }}">
       <input type="hidden" name="form-name" value="contact">
