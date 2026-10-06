@@ -1,5 +1,5 @@
-// Usage: node render.js frames <outDir> [fps]   → PNG frames (then ffmpeg)
-//        node render.js stills <outDir> t1 t2 …  → PNG stills at given seconds
+// Usage: node render.js frames <outDir> [fps]   → PNG frames (then ffmpeg) + out/cues.json for the soundtrack
+//        node render.js stills <outDir> v1 v2 …  → PNG stills at given video seconds
 const { chromium } = require('playwright');
 const path = require('path'), fs = require('fs');
 (async () => {
@@ -16,11 +16,21 @@ const path = require('path'), fs = require('fs');
   if (mode === 'stills') {
     for (const t of rest) await shot(+t, path.join(out, `t${(+t).toFixed(2)}.png`));
   } else {
-    const fps = +(rest[0] || 30), n = 30 * fps;
+    const fps = +(rest[0] || 30);
+    const tl = await page.evaluate(() => window.TIMELINE.TOTAL);
+    const n = Math.round(tl * fps);
     for (let i = 0; i < n; i++) {
       await shot(i / fps, path.join(out, `f${String(i).padStart(4, '0')}.png`));
       if (i % 100 === 0) console.log('frame', i, '/', n);
     }
   }
+  // scene-change cue times in video time, for soundtrack.sh
+  const cues = await page.evaluate(() => ({
+    total: TIMELINE.TOTAL,
+    cuts: [3.2, 5.6, 8.45, 10.6, 16.0, 19.1, 21.0, 24.4, 27.4].map(TIMELINE.forward),
+    hits: [3.3, 27.5].map(TIMELINE.forward),
+    ticks: [0.25, 0.65, 1.05, 1.95, 2.1, 2.25].map(TIMELINE.forward),
+  }));
+  fs.writeFileSync(path.join(__dirname, 'out', 'cues.json'), JSON.stringify(cues, null, 1));
   await b.close();
 })();
