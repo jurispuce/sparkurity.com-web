@@ -1,0 +1,543 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Sparkurity — for organisations</title>
+<!--
+  1920×1080 · 30 fps motion piece, authored on a 30 s timeline plus reading pauses (HOLDS). Deterministic: every frame is render(videoTime).
+  Preview in a browser (plays in real time, press space to pause, ←/→ to scrub),
+  or render frames with render.js → ffmpeg. Fonts are local (fonts/) so frames are reproducible.
+-->
+<style>
+@font-face { font-family: 'Fraunces'; src: url('fonts/fraunces.woff2') format('woff2'); font-weight: 100 900; }
+@font-face { font-family: 'Inter'; src: url('fonts/inter.woff2') format('woff2'); font-weight: 100 900; }
+@font-face { font-family: 'JetBrains Mono'; src: url('fonts/jetbrains-mono-latin-400-normal.woff2') format('woff2'); font-weight: 400; }
+@font-face { font-family: 'JetBrains Mono'; src: url('fonts/jetbrains-mono-latin-600-normal.woff2') format('woff2'); font-weight: 600; }
+:root {
+  --spark:#4A95D1; --action:#2F6FA3; --blue-800:#25557C; --blue-100:#D4E6F5; --blue-50:#EDF4FB;
+  --petrol:#2C6374; --petrol-dark:#214B58; --petrol-100:#C4D8D4; --petrol-50:#EAF1F0;
+  --ink:#2B2C2E; --body:#56575A; --grey:#6D6E71; --grey-200:#CFCFD1; --line:#E7E7E8; --mist:#F4F4F5; --stripe:#FAFBFB;
+  --terra:#B25C43; --terra-200:#E4C4B8; --terra-50:#F7EDE9; --success:#2F855A; --success-50:#E7F2EC;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { background: #000; overflow: hidden; }
+#stage { position: relative; width: 1920px; height: 1080px; overflow: hidden; background: var(--mist); font-family: 'Inter', sans-serif; color: var(--ink); transform-origin: 0 0; }
+.abs { position: absolute; will-change: transform, opacity; }
+.bg { position: absolute; inset: 0; opacity: 0; }
+.kicker { font-family: 'JetBrains Mono', monospace; font-weight: 600; font-size: 22px; letter-spacing: .16em; text-transform: uppercase; color: var(--action); white-space: nowrap; }
+.h { font-family: 'Fraunces', serif; font-weight: 600; letter-spacing: -.01em; line-height: 1.05; white-space: nowrap; font-variation-settings: 'opsz' 144; }
+.mono { font-family: 'JetBrains Mono', monospace; text-transform: uppercase; letter-spacing: .08em; }
+.card { background: #fff; border: 1px solid var(--line); border-radius: 18px; box-shadow: 0 6px 16px rgba(37,85,124,.10); }
+.pill { display: inline-flex; align-items: center; gap: 8px; height: 34px; padding: 0 16px; border-radius: 999px; font-family: 'JetBrains Mono', monospace; font-weight: 600; font-size: 15px; letter-spacing: .06em; text-transform: uppercase; white-space: nowrap; }
+.glow { position: absolute; border-radius: 50%; background: radial-gradient(circle at center, rgba(74,149,209,.32), transparent 65%); pointer-events: none; }
+.dots { position: absolute; inset: -60px; background-image: radial-gradient(rgba(44,99,116,.13) 1.6px, transparent 1.7px); background-size: 40px 40px; }
+svg { overflow: visible; }
+</style>
+</head>
+<body>
+<div id="stage"></div>
+
+<script>
+/* ───────────────────────── helpers ───────────────────────── */
+const DUR = 30; // authored timeline (seconds)
+/* Reading pauses: [authored time, hold seconds]. At each point the content holds still
+   while ambient motion keeps running, so every section gets ~2 s to sink in. */
+const HOLDS = [[2.72, 2], [5.29, 2], [8.19, 2], [10.29, 2], [15.6, 2], [18.85, 2], [20.65, 2], [24.0, 1], [27.05, 1.7], [29.95, 1.3]];
+const TOTAL = DUR + HOLDS.reduce((a, h) => a + h[1], 0);
+// video time → authored time
+function remap(v) {
+  let off = 0;
+  for (const [h, d] of HOLDS) {
+    if (v < h + off) return v - off;
+    if (v < h + off + d) return h;
+    off += d;
+  }
+  return Math.min(DUR, v - off);
+}
+// authored time → video time (first frame it is reached), used for audio cue placement
+function forward(t) { let off = 0; for (const [h, d] of HOLDS) { if (t <= h) break; off += d; } return t + off; }
+let A = 0; // ambient clock = video time
+const stage = document.getElementById('stage');
+const clamp = (v, a = 0, b = 1) => Math.min(b, Math.max(a, v));
+const p = (t, a, b) => clamp((t - a) / (b - a));
+const lerp = (a, b, k) => a + (b - a) * k;
+const E = {
+  out: k => 1 - Math.pow(1 - k, 3),
+  in: k => k * k * k,
+  io: k => k < .5 ? 4 * k * k * k : 1 - Math.pow(-2 * k + 2, 3) / 2,
+  back: k => { const c = 1.70158, c3 = c + 1; return 1 + c3 * Math.pow(k - 1, 3) + c * Math.pow(k - 1, 2); },
+  expo: k => k === 1 ? 1 : 1 - Math.pow(2, -10 * k),
+};
+// in/out envelope: fades in over [a,a+fi], out over [b-fo,b]
+const env = (t, a, b, fi = .35, fo = .3) => Math.min(E.out(p(t, a, a + fi)), 1 - E.in(p(t, b - fo, b)));
+
+function el(html, style = {}, parent = stage) {
+  const d = document.createElement('div');
+  d.className = 'abs';
+  d.innerHTML = html;
+  Object.assign(d.style, style);
+  parent.appendChild(d);
+  return d;
+}
+function svgEl(tag, attrs, parent) {
+  const n = document.createElementNS('http://www.w3.org/2000/svg', tag);
+  for (const k in attrs) n.setAttribute(k, attrs[k]);
+  parent.appendChild(n);
+  return n;
+}
+// set transform/opacity in one go
+function tf(node, { x = 0, y = 0, s = 1, r = 0, o = 1, sx, sy } = {}) {
+  node.style.transform = `translate(${x}px,${y}px) rotate(${r}deg) scale(${sx ?? s},${sy ?? s})`;
+  node.style.opacity = o;
+  node.style.visibility = o <= 0.001 ? 'hidden' : 'visible';
+}
+// word-by-word headline; returns updater(t, start, stagger)
+function words(node) {
+  const txt = node.textContent;
+  node.innerHTML = txt.split(' ').map(w => `<span style="display:inline-block;will-change:transform,opacity">${w}</span>`).join(' ');
+  const spans = [...node.children];
+  return (t, a, st = .07, d = .45) => spans.forEach((sp, i) => {
+    const k = E.out(p(t, a + i * st, a + i * st + d));
+    sp.style.transform = `translateY(${(1 - k) * 46}px)`;
+    sp.style.opacity = k;
+  });
+}
+const ICON = {
+  check: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>',
+  user: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>',
+  file: '<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>',
+  link: '<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>',
+  cursor: '<svg width="44" height="44" viewBox="0 0 24 24"><path d="M4 2l15 9.5-6.6 1.3L9 19z" fill="#fff" stroke="#2B2C2E" stroke-width="1.4" stroke-linejoin="round"/></svg>',
+};
+// Sparkurity mark: two spark-blue arrows + two grey arrows (from assets/logo/sparkurity-mark.svg)
+const MARK = [
+  { pts: '18.54 11.18 18.63 11.43 27.31 7.32 22.97 15.91 23.38 16.06 24.74 16.55 26.78 17.28 31.59 7.17 27.59 3.06 17.38 7.78 18.11 9.92 18.54 11.18', c: 'spark', from: [1, -1] },
+  { pts: '13.04 26.45 12.95 26.2 4.26 30.31 8.55 21.82 8.56 21.83 8.61 21.73 8.19 21.58 6.83 21.09 4.86 20.38 0 30.48 4 34.59 14.24 29.91 13.48 27.73 13.04 26.45', c: 'spark', from: [-1, 1] },
+  { pts: '.02 7.04 4.67 17.32 6.8 16.62 8.33 16.11 8.33 16.12 8.47 16.07 7.76 14.6 4.3 7.34 11.6 10.91 12.94 11.56 13.47 10.04 14.22 7.92 4.13 3.04 .02 7.04', c: 'grey', from: [-1, -1] },
+  { pts: '24.88 20.98 23.12 21.56 23.86 23.12 27.27 30.27 20.08 26.77 18.65 26.08 18.08 27.69 17.36 29.73 27.42 34.6 31.53 30.59 26.89 20.32 24.88 20.98', c: 'grey', from: [1, 1] },
+];
+function markSVG(size, onDark) {
+  const col = c => onDark ? (c === 'spark' ? '#fff' : 'rgba(255,255,255,.55)') : (c === 'spark' ? '#4A95D1' : '#6D6E71');
+  return `<svg width="${size}" height="${size * 34.6 / 31.6}" viewBox="0 0 31.6 34.6">${MARK.map(m => `<polygon fill="${col(m.c)}" points="${m.pts}"/>`).join('')}</svg>`;
+}
+
+/* ───────────────────────── persistent layers ───────────────────────── */
+const BG = {
+  mist: el('<div class="dots"></div>', { inset: 0, background: '#F4F4F5' }),
+  grey: el('', { inset: 0, background: '#E9E9EA' }),
+  petrol: el('<div class="glow" style="width:1300px;height:1300px;right:-380px;top:-480px"></div><div class="glow" style="width:900px;height:900px;left:-360px;bottom:-460px;opacity:.6"></div>', { inset: 0, background: 'var(--petrol)', overflow: 'hidden' }),
+  white: el('<div class="dots" style="opacity:.6"></div>', { inset: 0, background: '#fff' }),
+};
+Object.values(BG).forEach(b => { b.classList.add('bg'); b.classList.remove('abs'); });
+const wipe = el('', { left: '960px', top: '540px', width: '10px', height: '10px', marginLeft: '-5px', marginTop: '-5px', borderRadius: '50%', background: 'var(--petrol)' });
+
+/* ═════════ S1 · annual click-through training (0 – 3.2) ═════════ */
+const s1 = {};
+s1.kicker = el('<span class="kicker" style="color:var(--grey)">Annual awareness training</span>', { left: '160px', top: '290px' });
+s1.lines = ['Click through.', 'Tick the box.', 'Forget by Friday.'].map((txt, i) =>
+  el(`<div class="h" style="font-size:100px;color:var(--ink);position:relative">${txt}<span class="strike" style="position:absolute;left:-8px;top:54%;height:9px;width:0;background:var(--terra);border-radius:5px"></span></div>`, { left: '160px', top: `${352 + i * 122}px` }));
+s1.player = el(`<div class="card" style="width:760px;height:430px;overflow:hidden;border-radius:18px">
+  <div style="height:330px;background:#D9D9DB;display:flex;align-items:center;justify-content:center;position:relative">
+    <div style="width:96px;height:96px;border-radius:50%;background:rgba(255,255,255,.7);display:flex;align-items:center;justify-content:center"><div style="width:0;height:0;border-left:32px solid #A7A7AA;border-top:20px solid transparent;border-bottom:20px solid transparent;margin-left:8px"></div></div>
+    <span class="mono" style="position:absolute;right:20px;top:18px;font-size:18px;font-weight:600;color:#fff;background:#A7A7AA;padding:4px 10px;border-radius:6px">2× speed</span>
+    <span class="mono" style="position:absolute;left:20px;top:18px;font-size:16px;font-weight:600;color:#8E8E91">Security awareness 2026 · same video for everyone</span>
+  </div>
+  <div style="padding:22px 26px;display:flex;align-items:center;gap:20px">
+    <span style="flex:1;height:10px;border-radius:5px;background:var(--line);overflow:hidden"><span class="f" style="display:block;height:100%;width:0;background:#A7A7AA"></span></span>
+    <span class="mono" style="font-size:18px;font-weight:600;color:var(--grey)"><b class="n">0</b>%</span>
+    <span style="padding:10px 20px;border-radius:8px;background:#CFCFD1;color:#fff;font-weight:700;font-size:18px">Next ›</span></div></div>`, { left: '1000px', top: '330px' });
+s1.pf = s1.player.querySelector('.f'); s1.pn = s1.player.querySelector('.n');
+s1.stamp = el(`<div style="display:flex;align-items:center;gap:14px;padding:14px 26px;border-radius:12px;border:3px solid var(--success);color:var(--success);font-weight:800;font-size:34px;background:rgba(255,255,255,.92)">${ICON.check.replace(/22/g, '34')} Completed</div>`, { left: '1250px', top: '440px' });
+s1.q = el('<div style="font-weight:700;font-size:28px;color:var(--terra)">Behaviour changed?</div><div class="mono" style="font-size:16px;color:var(--grey);margin-top:8px">Large field studies: little measurable effect · Ho et al. 2025 · Lain et al. 2022</div>', { left: '1000px', top: '800px' });
+
+/* ═════════ S2 · logo (3.2 – 5.6) ═════════ */
+const s2 = {};
+s2.mark = el(markSVG(240, true), { left: '840px', top: '250px' });
+s2.polys = [...s2.mark.querySelectorAll('polygon')];
+s2.logo = el('<img src="sparkurity-logo-white.svg" style="width:1000px;display:block">', { left: '460px', top: '400px' });
+s2.tag = el('<div class="h" style="font-size:58px;color:#fff;text-align:center;width:1600px">Click-through doesn’t work. Practice does.</div>', { left: '160px', top: '610px' });
+s2.tagW = words(s2.tag.firstChild);
+
+/* ═════════ chrome ═════════ */
+const chrome = {};
+chrome.logoC = el('<img src="sparkurity-logo.svg" style="width:220px;display:block">', { left: '160px', top: '72px' });
+chrome.logoW = el('<img src="sparkurity-logo-white.svg" style="width:220px;display:block">', { left: '160px', top: '72px' });
+const CH = ['Role-based cases', 'Practice', 'Leadership', 'Evidence'];
+chrome.rail = el(`<div style="display:flex;gap:16px">${CH.map((c, i) => `<div style="width:220px"><div class="mono lbl" style="font-size:14px;font-weight:600;margin-bottom:10px">0${i + 1} · ${c}</div><div style="height:4px;border-radius:2px;background:rgba(127,127,127,.22);overflow:hidden"><div class="f" style="height:100%;width:0;background:var(--spark)"></div></div></div>`).join('')}</div>`, { right: '160px', top: '76px' });
+chrome.fills = [...chrome.rail.querySelectorAll('.f')];
+chrome.lbls = [...chrome.rail.querySelectorAll('.lbl')];
+
+/* ═════════ S3 · one course, every role (5.6 – 10.6) ═════════ */
+const s3 = {};
+s3.kicker = el('<span class="kicker">01 · One course, every role</span>', { left: '160px', top: '200px' });
+s3.hA = ['Same objective.', 'Cases from their', 'own job.'].map((t, i) => el(`<div class="h" style="font-size:80px">${t}</div>`, { left: '160px', top: `${250 + i * 90}px` }));
+s3.hB = ['Thirty minutes.', 'Spent where they', 'hesitate.'].map((t, i) => el(`<div class="h" style="font-size:80px">${t}</div>`, { left: '160px', top: `${250 + i * 90}px` }));
+s3.hub = el(`<div class="card" style="width:430px;padding:24px 26px;border-radius:16px;background:var(--petrol);border:none;color:#fff">
+  <div class="mono" style="font-size:14px;font-weight:600;color:var(--blue-100)">Self-paced · ~30 min</div>
+  <div style="font-family:Fraunces;font-weight:600;font-size:30px;line-height:1.15;margin-top:8px">Information Security Essentials</div></div>`, { left: '160px', top: '630px' });
+s3.wires = svgEl('svg', { width: 1920, height: 1080, style: 'position:absolute;left:0;top:0' }, stage);
+const ROLECASE = [
+  ['Sales', 'var(--action)', 'new.customer@gmai1.com', 'Send our full user export to my personal inbox?', 'gmai1'],
+  ['Support', 'var(--petrol)', 'ceo-office@company-help.net', 'I’m locked out — reset my password now, no time for checks.', 'company-help.net'],
+  ['Finance', 'var(--terra)', 'billing@northwind-supp1y.com', 'Updated bank details for invoice #4471.', 'supp1y'],
+  ['Engineering', 'var(--blue-800)', 'AI assistant prompt', 'Paste the production API key so I can debug this for you.', 'API key'],
+];
+s3.cases = ROLECASE.map((r, i) => {
+  const x = 700 + i * 270, y = 590;
+  const body = r[3].replace(r[4], `<span style="background:var(--terra-50);box-shadow:inset 0 -3px 0 var(--terra);padding:0 2px">${r[4]}</span>`);
+  const from = r[2].replace(r[4], `<span style="color:var(--terra)">${r[4]}</span>`);
+  const card = el(`<div class="card" style="width:255px;height:330px;padding:20px 20px;border-radius:16px">
+    <span class="pill" style="height:30px;font-size:13px;color:#fff;background:${r[1]}">${r[0]}</span>
+    <div class="mono" style="font-size:13px;line-height:1.35;color:var(--grey);margin-top:14px;text-transform:none;letter-spacing:0;word-break:break-all">From: ${from}</div>
+    <div style="font-size:22px;font-weight:600;line-height:1.35;margin-top:10px;white-space:normal">${body}</div></div>`, { left: `${x}px`, top: `${y}px` });
+  const cx = x + 127;
+  const d = `M 590 700 C 640 700, 640 545, 690 545 L ${cx} 545 L ${cx} ${y}`;
+  const ln = svgEl('path', { d, fill: 'none', stroke: 'var(--spark)', 'stroke-width': 3 }, s3.wires);
+  const len = ln.getTotalLength(); ln.style.strokeDasharray = len;
+  return { card, ln, len };
+});
+// 30-minute budget: two learners, same total, different spend
+const MOD = ['Why SaaS', 'Social eng.', 'Accounts & MFA', 'Customer data', 'AI tools', 'Report it'];
+const SPEND = [
+  { who: 'Sales rep', w: [3, 9, 3, 9, 5, 3] },
+  { who: 'Engineer', w: [3, 5, 9, 3, 9, 3] },
+];
+s3.budget = el(`<div style="width:1600px">${SPEND.map((sp, r) => `
+  <div style="display:flex;align-items:center;gap:20px;margin-top:${r ? 46 : 0}px">
+    <span style="width:170px;font-weight:700;font-size:26px">${sp.who}</span>
+    <span class="row" style="flex:1;display:flex;gap:6px;height:84px">
+      <span class="seg sc" style="flex:0 0 72px;border-radius:10px;background:var(--action);color:#fff;display:flex;align-items:center;justify-content:center;font-family:'JetBrains Mono';font-size:13px;font-weight:600;text-align:center;line-height:1.2">SKILL<br>CHECK</span>
+      ${MOD.map((m, i) => `<span class="seg" data-w="${sp.w[i]}" style="flex:5 1 0;min-width:0;border-radius:10px;background:#fff;border:1.5px solid var(--line);display:flex;flex-direction:column;justify-content:center;padding:0 8px;overflow:hidden">
+        <span style="font-size:15px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${m}</span><span class="mono st" style="font-size:12px;font-weight:600;color:var(--grey)">5 min</span></span>`).join('')}
+    </span></div>`).join('')}
+  <div class="mono tot" style="margin-top:22px;margin-left:190px;font-size:17px;font-weight:600;color:var(--body)">Same 30 minutes · recap what they know · focus where they hesitate</div></div>`, { left: '160px', top: '600px' });
+s3.rows = [...s3.budget.querySelectorAll('.row')].map(r => [...r.querySelectorAll('.seg:not(.sc)')]);
+
+/* ═════════ S4 · practice (10.6 – 16.0) ═════════ */
+const s4 = {};
+s4.kicker = el('<span class="kicker">02 · Practice, not slides</span>', { left: '160px', top: '200px' });
+s4.h = ['Decide.', 'Get feedback.', 'Practise again.'].map((t, i) => el(`<div class="h" style="font-size:80px">${t}</div>`, { left: '160px', top: `${250 + i * 90}px` }));
+s4.who = el('<span class="pill" style="height:40px;font-size:15px;color:#fff;background:var(--terra)">Finance · accounts payable</span><div style="font-size:23px;color:var(--body);margin-top:14px;width:520px">Written for this learner’s role, from the profile they filled in.</div>', { left: '160px', top: '560px' });
+s4.mastery = el(`<div class="card" style="display:flex;align-items:center;gap:16px;width:520px;padding:20px 24px;border-radius:14px">
+  <span style="width:46px;height:46px;border-radius:12px;background:var(--success);color:#fff;display:flex;align-items:center;justify-content:center">${ICON.check}</span>
+  <span><span style="display:block;font-weight:700;font-size:23px">Module mastered</span><span class="mono" style="font-size:14px;font-weight:600;color:var(--grey)">Retrieval check 3/3 · gate passed</span></span></div>`, { left: '160px', top: '720px' });
+s4.mail = el(`<div class="card" style="width:900px;padding:26px 30px;border-radius:18px">
+  <div style="display:flex;justify-content:space-between"><span class="mono" style="font-size:14px;font-weight:600;color:var(--grey)">Scenario · inbox</span><span class="mono" style="font-size:14px;color:var(--grey)">Today 09:12</span></div>
+  <div style="margin-top:14px;font-size:19px;color:var(--body)">From: Northwind Supplies &lt;billing@northwind-<span class="f1" style="padding:0 2px">supp1y</span><span class="fc" style="display:inline-flex;vertical-align:super;width:22px;height:22px;margin-left:3px;border-radius:6px;background:var(--terra);color:#fff;align-items:center;justify-content:center;font-family:'JetBrains Mono';font-weight:600;font-size:12px;opacity:0">1</span>.com&gt;</div>
+  <div style="margin-top:6px;font-size:27px;font-weight:700">Updated bank details for invoice #4471</div>
+  <div style="margin-top:10px;font-size:21px;line-height:1.5;color:var(--body)">Please pay to our <span class="f2" style="padding:0 2px">new account</span><span class="fc" style="display:inline-flex;vertical-align:super;width:22px;height:22px;margin-left:3px;border-radius:6px;background:var(--terra);color:#fff;align-items:center;justify-content:center;font-family:'JetBrains Mono';font-weight:600;font-size:12px;opacity:0">2</span> from today. Payment is <span class="f3" style="padding:0 2px">due by Friday</span><span class="fc" style="display:inline-flex;vertical-align:super;width:22px;height:22px;margin-left:3px;border-radius:6px;background:var(--terra);color:#fff;align-items:center;justify-content:center;font-family:'JetBrains Mono';font-weight:600;font-size:12px;opacity:0">3</span> to avoid suspension.</div></div>`, { left: '860px', top: '250px' });
+s4.flags = [1, 2, 3].map(i => s4.mail.querySelector('.f' + i));
+s4.flagChips = [...s4.mail.querySelectorAll('.fc')];
+const OPTS = ['Pay it — the invoice number matches', 'Call the supplier on the number you already have', 'Reply to the email and ask them to confirm'];
+s4.opts = OPTS.map((o, i) => el(`<div class="opt" style="display:flex;align-items:center;gap:16px;width:900px;height:76px;padding:0 22px;border-radius:12px;border:2px solid var(--line);background:#fff;font-size:23px;font-weight:600">
+  <span class="k" style="width:36px;height:36px;border-radius:9px;background:var(--mist);display:flex;align-items:center;justify-content:center;font-family:'JetBrains Mono';font-weight:600;font-size:16px">${'ABC'[i]}</span>${o}</div>`, { left: '860px', top: `${560 + i * 90}px` }));
+s4.fb = el(`<div style="width:900px;padding:16px 22px;border-radius:12px;background:var(--success-50);color:var(--success);font-size:21px;font-weight:600">Right — verify through a channel the sender doesn’t control. A change of bank details by email is a classic fraud signal.</div>`, { left: '860px', top: '840px' });
+s4.cursor = el(ICON.cursor, { left: '0px', top: '0px', zIndex: 20 });
+
+/* ═════════ S5 · leadership cohorts (16.0 – 21.0) ═════════ */
+const s5 = {};
+s5.kicker = el('<span class="kicker" style="color:var(--blue-100)">03 · Leadership cohorts</span>', { left: '160px', top: '200px' });
+s5.hA = ['Leaders rehearse', 'the incident — in role.'].map((t, i) => el(`<div class="h" style="font-size:80px;color:#fff">${t}</div>`, { left: '160px', top: `${250 + i * 92}px` }));
+s5.hB = ['Practised before', 'it happens for real.'].map((t, i) => el(`<div class="h" style="font-size:80px;color:#fff">${t}</div>`, { left: '160px', top: `${250 + i * 92}px` }));
+const CX = 1360, CY = 640, R = 280;
+s5.lines = svgEl('svg', { width: 1920, height: 1080, style: 'position:absolute;left:0;top:0' }, stage);
+s5.case = el(`<div class="card" style="width:330px;padding:24px 24px;border-radius:18px;text-align:center;border:none">
+  <div class="mono" style="font-size:14px;font-weight:600;color:var(--terra)">07:40 · Incident</div>
+  <div style="font-family:Fraunces;font-weight:600;font-size:28px;line-height:1.15;margin-top:8px">Ransomware on the billing system</div>
+  <div style="font-size:16px;color:var(--body);margin-top:10px">Who reports what, to whom, by when?</div></div>`, { left: `${CX - 165}px`, top: `${CY - 100}px` });
+const ROLES = [['Incident lead', 'var(--spark)', '#fff'], ['Communications', '#fff', 'var(--petrol)'], ['CFO', 'var(--terra)', '#fff'], ['Legal', '#fff', 'var(--petrol)'], ['IT operations', 'var(--spark)', '#fff'], ['DPO', 'var(--terra)', '#fff']];
+s5.people = ROLES.map((role, i) => {
+  const a = -Math.PI / 2 + i * 2 * Math.PI / 6;
+  const n = el(`<div class="dot" style="width:80px;height:80px;border-radius:50%;background:rgba(255,255,255,.16);border:2px solid rgba(255,255,255,.4);display:flex;align-items:center;justify-content:center;color:#fff">${ICON.user}</div>
+    <span class="pill role" style="position:absolute;left:50%;top:88px;transform:translateX(-50%);height:28px;font-size:13px;padding:0 12px;background:${role[1]};color:${role[2]}">${role[0]}</span>`, { left: '0px', top: '0px' });
+  return { n, x: CX + R * Math.cos(a) - 40, y: CY + R * Math.sin(a) - 40, role, dot: n.querySelector('.dot'), tag: n.querySelector('.role') };
+});
+s5.packs = s5.people.map(pp => el(`<div style="width:34px;height:42px;border-radius:5px;background:#fff;box-shadow:0 4px 10px rgba(0,0,0,.25);border-top:5px solid ${pp.role[1] === '#fff' ? 'var(--petrol-100)' : pp.role[1]}"></div>`, { left: '0px', top: '0px' }));
+s5.links = [];
+for (let i = 0; i < 6; i++) for (const j of [(i + 1) % 6, (i + 2) % 6]) {
+  const a = s5.people[i], b = s5.people[j];
+  s5.links.push(svgEl('line', { x1: a.x + 40, y1: a.y + 40, x2: b.x + 40, y2: b.y + 40, stroke: '#D4E6F5', 'stroke-width': 2.5, 'stroke-linecap': 'round' }, s5.lines));
+}
+s5.live = el('<span class="pill" style="height:42px;font-size:17px;padding:0 20px;color:var(--petrol);background:#fff"><span class="ld" style="width:12px;height:12px;border-radius:50%;background:var(--terra)"></span>Live tabletop · instructor-led</span>', { left: '160px', top: '780px' });
+s5.notes = ['Each role gets its own briefing', 'Decisions debriefed with an expert', 'Cases from your sector'].map((t, i) =>
+  el(`<div style="display:flex;align-items:center;gap:14px;color:#fff;font-size:26px;font-weight:600"><span style="color:var(--spark)">${ICON.check}</span>${t}</div>`, { left: '160px', top: `${560 + i * 64}px` }));
+// NIS2 reporting clock
+const CLOCK = [['0 h', 'Incident detected', '', 0], ['24 h', 'Early warning', 'Owner: Incident lead', .3], ['72 h', 'Incident notification', 'Owner: Legal', .62], ['1 month', 'Final report', 'Owner: CISO', 1]];
+s5.clock = el(`<div style="position:relative;width:1560px;height:260px">
+  <div style="position:absolute;left:0;right:0;top:60px;height:8px;border-radius:4px;background:rgba(255,255,255,.2)"><div class="f" style="height:100%;width:0;background:var(--spark);border-radius:4px"></div></div>
+  ${CLOCK.map((c, i) => `<div class="m" style="position:absolute;left:${c[3] * 100}%;top:0;transform:translateX(${i === 3 ? '-100%' : i === 0 ? '0' : '-50%'});text-align:${i === 3 ? 'right' : i === 0 ? 'left' : 'center'}">
+    <div class="mono" style="color:var(--blue-100);font-size:20px;font-weight:600">${c[0]}</div>
+    <div style="width:26px;height:26px;border-radius:50%;background:#fff;border:6px solid var(--spark);margin:12px ${i === 3 ? '0 0 auto' : i === 0 ? 'auto 0 0' : 'auto'};${i === 3 ? 'margin-left:auto' : i === 0 ? 'margin-right:auto' : ''}"></div>
+    <div style="color:#fff;font-weight:700;font-size:26px;margin-top:14px;white-space:nowrap">${c[1]}</div>
+    ${c[2] ? `<span class="pill own" style="margin-top:12px;height:30px;font-size:13px;color:var(--petrol);background:#fff">${c[2]}</span>` : ''}</div>`).join('')}
+  <div class="mono" style="position:absolute;left:0;top:236px;font-size:15px;color:var(--blue-100)">NIS2 reporting timeline · agreed in the exercise, not on the day</div></div>`, { left: '180px', top: '600px' });
+s5.clockF = s5.clock.querySelector('.f'); s5.marks = [...s5.clock.querySelectorAll('.m')];
+
+/* ═════════ S6 · evidence (21.0 – 24.4) ═════════ */
+const s6 = {};
+s6.kicker = el('<span class="kicker">04 · Evidence for L&amp;D and the CISO</span>', { left: '160px', top: '200px' });
+s6.h = ['See what each team', 'has actually mastered.'].map((t, i) => el(`<div class="h" style="font-size:76px">${t}</div>`, { left: '160px', top: `${244 + i * 88}px` }));
+s6.notes = ['Completion and topic-level results', 'Audit log of admin & AI-settings changes', 'GDPR anonymisation on request'].map((t, i) =>
+  el(`<div style="display:flex;align-items:center;gap:14px;font-size:26px;font-weight:600"><span style="width:40px;height:40px;border-radius:10px;background:var(--petrol-50);color:var(--petrol);display:flex;align-items:center;justify-content:center">${ICON.check}</span>${t}</div>`, { left: '160px', top: `${560 + i * 74}px` }));
+const TEAMS = ['Sales', 'Support', 'Finance', 'Engineering', 'Product', 'Management'];
+const TOPICS = ['Phishing', 'Pretexting', 'Payment fraud', 'Data', 'AI tools', 'Reporting'];
+const LVL = [[2, 2, 1, 2, 1, 2], [2, 1, 2, 2, 2, 1], [2, 2, 0, 1, 2, 2], [2, 2, 2, 1, 1, 2], [1, 2, 2, 2, 1, 2], [2, 1, 1, 2, 2, 1]];
+const LC = ['var(--terra)', 'var(--blue-100)', 'var(--petrol)'];
+s6.panel = el(`<div class="card" style="width:860px;padding:30px 34px;border-radius:22px;box-shadow:0 30px 70px rgba(37,85,124,.16)">
+  <div style="display:flex;justify-content:space-between"><span class="mono" style="font-size:15px;font-weight:600;color:var(--grey)">Mastery by team · Security essentials</span>
+  <span style="display:flex;gap:14px;font-size:14px;font-weight:600;color:var(--body)">${['Focus', 'Developing', 'Mastered'].map((l, i) => `<span style="display:inline-flex;align-items:center;gap:6px"><span style="width:14px;height:14px;border-radius:4px;background:${LC[i]}"></span>${l}</span>`).join('')}</span></div>
+  <div style="display:grid;grid-template-columns:150px repeat(6,1fr);gap:8px;margin-top:22px;align-items:center">
+   <span></span>${TOPICS.map(m => `<span class="mono" style="text-align:center;font-size:12px;font-weight:600;color:var(--grey);line-height:1.2">${m}</span>`).join('')}
+   ${TEAMS.map((n, r) => `<span style="font-size:19px;font-weight:600">${n}</span>` + TOPICS.map((_, c) => `<span class="cell" data-l="${LVL[r][c]}" data-r="${r}" data-c="${c}" style="height:56px;border-radius:8px;background:var(--mist)"></span>`).join('')).join('')}
+  </div></div>`, { left: '900px', top: '180px' });
+s6.cells = [...s6.panel.querySelectorAll('.cell')];
+s6.toast = el(`<div class="card" style="display:flex;align-items:center;gap:18px;width:700px;padding:20px 24px;border-left:6px solid var(--terra);border-radius:14px;box-shadow:0 24px 50px rgba(0,0,0,.16)">
+  <span class="pill" style="color:var(--terra);background:var(--terra-50);border:1px solid var(--terra-200)">Focus</span>
+  <span><span style="display:block;font-weight:700;font-size:22px">Finance · Payment fraud · 3 people below mastery</span><span style="display:block;font-size:18px;color:var(--body);margin-top:4px">Their roadmaps now focus on it — instructor review pending</span></span></div>`, { left: '1060px', top: '890px' });
+s6.ringNode = el('<div style="width:96px;height:76px;border-radius:12px;border:3px solid var(--terra)"></div>', { left: '0px', top: '0px' });
+
+/* ═════════ S7 · comparison (24.4 – 27.4) ═════════ */
+const s7 = {};
+s7.h = el('<div class="h" style="font-size:90px;text-align:center;width:1600px">Not another awareness module.</div>', { left: '160px', top: '150px' });
+const ROWS = [['Same video for everyone', 'Cases written for each role'], ['An hour of click-through', '30 minutes, skipping what they know'], ['Completion ticks', 'Topic-level mastery per team'], ['Leaders sit it out', 'Leaders rehearse incidents in role']];
+s7.hdrL = el('<span class="kicker" style="color:var(--grey)">Typical awareness tool</span>', { left: '200px', top: '330px' });
+s7.hdrR = el('<span class="kicker" style="color:var(--action)">Sparkurity</span>', { left: '1000px', top: '330px' });
+s7.rows = ROWS.map((r, i) => ({
+  l: el(`<div style="position:relative;font-size:34px;font-weight:600;color:var(--grey);white-space:nowrap">${r[0]}<span class="s" style="position:absolute;left:-6px;top:52%;height:5px;width:0;background:var(--terra);border-radius:3px"></span></div>`, { left: '200px', top: `${400 + i * 132}px` }),
+  arrow: el('<div style="font-size:44px;color:var(--spark);font-weight:700">→</div>', { left: '880px', top: `${394 + i * 132}px` }),
+  r: el(`<div class="card" style="display:flex;align-items:center;gap:18px;width:760px;height:96px;padding:0 26px;border-radius:16px"><span style="width:46px;height:46px;border-radius:12px;background:var(--action);color:#fff;display:flex;align-items:center;justify-content:center">${ICON.check}</span><span style="font-size:32px;font-weight:700;white-space:nowrap">${r[1]}</span></div>`, { left: '1000px', top: `${374 + i * 132}px` }),
+}));
+s7.rows.forEach(r => r.strike = r.l.querySelector('.s'));
+
+/* ═════════ S8 · end card (27.4 – 30) ═════════ */
+const s8 = {};
+s8.logo = el('<img src="sparkurity-logo-white.svg" style="width:880px;display:block">', { left: '520px', top: '320px' });
+s8.tag = el('<div class="h" style="font-size:60px;color:#fff;text-align:center;width:1600px">Training each role actually needs —<br>with evidence of what each person mastered.</div>', { left: '160px', top: '510px' });
+s8.cta = el('<div style="display:flex;gap:22px;align-items:center"><span style="padding:20px 38px;border-radius:12px;background:#fff;color:var(--petrol);font-weight:700;font-size:26px">Talk to us about your team</span><span class="mono" style="color:var(--blue-100);font-size:26px;font-weight:600;letter-spacing:.12em">sparkurity.com</span></div>', { left: '560px', top: '770px' });
+
+const prog = el('<div style="height:6px;width:1920px;background:transparent"><div class="f" style="height:100%;width:0;background:var(--spark)"></div></div>', { left: '0px', top: '1074px', zIndex: 50 });
+const progF = prog.querySelector('.f');
+
+/* ───────────────────────── render ───────────────────────── */
+const at = (node) => { const r = node.getBoundingClientRect(), s = stage.getBoundingClientRect(), k = s.width / 1920; return { x: (r.left - s.left) / k, y: (r.top - s.top) / k, w: r.width / k, h: r.height / k }; };
+function render(v) {
+  A = v;
+  const t = remap(v);
+  BG.grey.style.opacity = t < 3.3 ? 1 : 0;
+  const darkS2 = t >= 2.9 && t < 5.75;
+  BG.petrol.style.opacity = Math.max(darkS2 ? (t < 3.3 ? 0 : 1) : 0, env(t, 15.85, 21.1, .3, .3), E.out(p(t, 27.2, 27.6)));
+  BG.mist.style.opacity = (t >= 5.4 && t < 24.6) ? 1 : 0;
+  BG.white.style.opacity = env(t, 24.25, 27.6, .3, .2);
+  BG.mist.firstChild.style.transform = `translate(${(A * 12) % 40}px,${(A * 7) % 40}px)`;
+  BG.white.firstChild.style.transform = `translate(${-(A * 10) % 40}px,0)`;
+  BG.petrol.querySelectorAll('.glow').forEach((g, i) => g.style.transform = `translate(${Math.sin(A * .6 + i) * 60}px,${Math.cos(A * .5 + i) * 40}px)`);
+  const w = E.io(p(t, 2.85, 3.35));
+  wipe.style.transform = `scale(${w * 240})`;
+  wipe.style.opacity = t > 2.85 && t < 3.4 ? 1 : 0;
+
+  /* S1 */
+  const o1 = 1 - E.in(p(t, 2.75, 3.1));
+  tf(s1.kicker, { o: E.out(p(t, .1, .5)) * o1, y: (1 - E.out(p(t, .1, .5))) * 20 });
+  s1.lines.forEach((l, i) => {
+    const k = E.out(p(t, .25 + i * .4, .8 + i * .4));
+    tf(l, { o: k * o1, y: (1 - k) * 60, s: 1 - .06 * E.in(p(t, 2.75, 3.1)) });
+    l.querySelector('.strike').style.width = `calc(${E.io(p(t, 1.95 + i * .14, 2.4 + i * .14)) * 100}% + 16px)`;
+  });
+  const ks = E.back(p(t, .35, .85));
+  tf(s1.player, { o: clamp(ks) * o1, s: .85 + .15 * ks });
+  const pr = E.io(p(t, .8, 1.7));
+  s1.pf.style.width = `${pr * 100}%`; s1.pn.textContent = Math.round(pr * 100);
+  const st = E.back(p(t, 1.7, 2.0));
+  tf(s1.stamp, { o: clamp(st) * o1, s: 1.6 - .6 * st, r: -6 });
+  tf(s1.q, { o: E.out(p(t, 2.0, 2.3)) * o1, y: (1 - E.out(p(t, 2.0, 2.3))) * 16 });
+
+  /* S2 */
+  const o2 = 1 - E.in(p(t, 5.3, 5.6));
+  const mk = p(t, 3.25, 4.05);
+  s2.polys.forEach((pl, i) => {
+    const k = E.back(clamp((mk - i * .08) / .7)), f = MARK[i].from;
+    pl.setAttribute('transform', `translate(${f[0] * (1 - k) * 40} ${f[1] * (1 - k) * 40}) rotate(${(1 - k) * 90 * f[0]} 15.8 17.3)`);
+    pl.style.opacity = clamp(k * 1.5);
+  });
+  const mOut = E.io(p(t, 4.05, 4.45));
+  tf(s2.mark, { o: (t < 3.25 ? 0 : 1) * (1 - mOut), s: 1 - .55 * mOut, y: mOut * 90, x: mOut * -390 });
+  const lk = E.out(p(t, 4.15, 4.6));
+  s2.logo.style.clipPath = `inset(0 ${(1 - lk) * 100}% 0 0)`;
+  tf(s2.logo, { o: (lk > 0 ? 1 : 0) * o2, y: -20 * E.in(p(t, 5.3, 5.6)) });
+  s2.tagW(t, 4.5, .06, .35);
+  tf(s2.tag, { o: o2, y: -20 * E.in(p(t, 5.3, 5.6)) });
+
+  /* chrome */
+  const chromeOn = env(t, 5.6, 27.4, .4, .3);
+  const dark = t >= 16 && t < 21;
+  tf(chrome.logoC, { o: chromeOn * (dark ? 0 : 1) });
+  tf(chrome.logoW, { o: chromeOn * (dark ? 1 : 0) });
+  tf(chrome.rail, { o: env(t, 5.6, 24.4, .4, .3) });
+  [[5.6, 10.6], [10.6, 16], [16, 21], [21, 24.4]].forEach(([a, b], i) => {
+    chrome.fills[i].style.width = `${p(t, a, b) * 100}%`;
+    chrome.lbls[i].style.color = (t >= a && t < b) ? (dark ? '#fff' : 'var(--ink)') : (dark ? 'rgba(255,255,255,.5)' : 'var(--grey)');
+  });
+
+  /* S3 — role cases, then the 30-minute budget */
+  const in3 = env(t, 5.6, 10.6, .4, .3);
+  tf(s3.kicker, { o: in3, y: (1 - E.out(p(t, 5.6, 6))) * 20 });
+  const swapA = E.io(p(t, 8.2, 8.55));
+  s3.hA.forEach((h, i) => { const k = E.out(p(t, 5.7 + i * .13, 6.2 + i * .13)); tf(h, { o: k * (1 - swapA), y: (1 - k) * 50 - swapA * 50 }); });
+  s3.hB.forEach((h, i) => { const k = E.out(p(t, 8.5 + i * .12, 8.95 + i * .12)); tf(h, { o: k * in3, y: (1 - k) * 50 }); });
+  const hk = E.back(p(t, 6.1, 6.5));
+  tf(s3.hub, { o: clamp(hk) * (1 - swapA), s: .8 + .2 * hk });
+  s3.cases.forEach((c, i) => {
+    const d = E.io(p(t, 6.4 + i * .3, 6.9 + i * .3));
+    c.ln.style.strokeDashoffset = c.len * (1 - d);
+    c.ln.style.opacity = 1 - swapA;
+    const k = E.back(p(t, 6.75 + i * .3, 7.15 + i * .3));
+    tf(c.card, { o: clamp(k) * (1 - swapA), s: .85 + .15 * k, x: swapA * 120 });
+  });
+  const bk = E.out(p(t, 8.55, 8.95));
+  tf(s3.budget, { o: bk * in3, y: (1 - bk) * 60 });
+  const adapt = E.io(p(t, 9.1, 9.75));
+  s3.rows.forEach((segs, r) => segs.forEach((sg, i) => {
+    const wv = +sg.dataset.w;
+    sg.style.flexGrow = lerp(5, wv, adapt);
+    const recap = wv <= 3, focus = wv >= 8; // 5 = standard pace
+    sg.style.background = adapt > .5 ? (recap ? 'var(--success-50)' : focus ? 'var(--terra-50)' : '#fff') : '#fff';
+    sg.style.borderColor = adapt > .5 ? (recap ? '#BFDCCB' : focus ? 'var(--terra-200)' : 'var(--line)') : 'var(--line)';
+    const stl = sg.querySelector('.st');
+    stl.textContent = adapt > .5 ? (recap ? 'recap' : focus ? 'focus' : `${wv} min`) : '5 min';
+    stl.style.color = adapt > .5 ? (recap ? 'var(--success)' : focus ? 'var(--terra)' : 'var(--grey)') : 'var(--grey)';
+  }));
+
+  /* S4 — practice */
+  const in4 = env(t, 10.6, 16.0, .4, .3);
+  tf(s4.kicker, { o: in4, y: (1 - E.out(p(t, 10.6, 11))) * 20 });
+  s4.h.forEach((h, i) => { const k = E.out(p(t, 10.7 + i * .13, 11.2 + i * .13)); tf(h, { o: k * in4, y: (1 - k) * 50 }); });
+  tf(s4.who, { o: E.out(p(t, 11.2, 11.5)) * in4 });
+  const mk4 = E.out(p(t, 11.0, 11.45));
+  tf(s4.mail, { o: mk4 * in4, y: (1 - mk4) * 60 });
+  s4.flags.forEach((f, i) => {
+    const k = E.out(p(t, 11.8 + i * .3, 12.05 + i * .3));
+    f.style.background = k > .3 ? 'var(--terra-50)' : 'transparent';
+    f.style.boxShadow = k > .3 ? 'inset 0 -3px 0 var(--terra)' : 'none';
+    s4.flagChips[i].style.opacity = k;
+    s4.flagChips[i].style.transform = `scale(${.4 + .6 * E.back(p(t, 11.8 + i * .3, 12.1 + i * .3))})`;
+  });
+  const chosen = t >= 13.55;
+  s4.opts.forEach((o, i) => {
+    const k = E.out(p(t, 12.7 + i * .1, 13.0 + i * .1));
+    tf(o, { o: k * in4, x: (1 - k) * 40 });
+    const sel = chosen && i === 1;
+    o.style.borderColor = sel ? 'var(--success)' : 'var(--line)';
+    o.style.background = sel ? 'var(--success-50)' : '#fff';
+    o.querySelector('.k').style.background = sel ? 'var(--success)' : 'var(--mist)';
+    o.querySelector('.k').style.color = sel ? '#fff' : 'var(--ink)';
+  });
+  const cur = E.io(p(t, 13.05, 13.5));
+  tf(s4.cursor, { o: env(t, 13.0, 14.0, .15, .2) * in4, x: lerp(1700, 1200, cur), y: lerp(1010, 670, cur), s: t > 13.5 && t < 13.6 ? .85 : 1 });
+  const fk = E.out(p(t, 13.7, 14.0));
+  tf(s4.fb, { o: fk * in4, y: (1 - fk) * 20 });
+  const mk5 = E.back(p(t, 14.5, 14.85));
+  tf(s4.mastery, { o: clamp(mk5) * in4, s: .8 + .2 * mk5 });
+
+  /* S5 — leadership cohort, then the reporting clock */
+  const in5 = env(t, 16.0, 21.0, .35, .3);
+  const toClock = E.io(p(t, 18.9, 19.35));
+  tf(s5.kicker, { o: in5, y: (1 - E.out(p(t, 16, 16.4))) * 20 });
+  s5.hA.forEach((h, i) => { const k = E.out(p(t, 16.1 + i * .15, 16.6 + i * .15)); tf(h, { o: k * (1 - toClock), y: (1 - k) * 50 - toClock * 50 }); });
+  s5.hB.forEach((h, i) => { const k = E.out(p(t, 19.2 + i * .12, 19.65 + i * .12)); tf(h, { o: k * in5, y: (1 - k) * 50 }); });
+  const cohortOn = in5 * (1 - toClock);
+  const ck5 = E.back(p(t, 16.35, 16.85));
+  tf(s5.case, { o: clamp(ck5) * cohortOn, s: .6 + .4 * ck5 });
+  s5.people.forEach((pp, i) => {
+    const k = E.io(p(t, 16.25 + i * .06, 16.95 + i * .06));
+    tf(pp.n, { o: clamp(k * 2) * cohortOn, x: lerp(700, pp.x, k), y: lerp(560 + (i % 3) * 120, pp.y, k) });
+    const rk = E.out(p(t, 17.0 + i * .07, 17.3 + i * .07));
+    pp.dot.style.background = rk > .5 ? pp.role[1] : 'rgba(255,255,255,.16)';
+    pp.dot.style.color = rk > .5 ? pp.role[2] : '#fff';
+    pp.dot.style.borderColor = rk > .5 ? 'rgba(255,255,255,.9)' : 'rgba(255,255,255,.4)';
+    pp.tag.style.opacity = rk;
+    pp.tag.style.transform = `translateX(-50%) translateY(${(1 - rk) * 10}px)`;
+    const pk = E.io(p(t, 17.35 + i * .06, 17.85 + i * .06));
+    tf(s5.packs[i], { o: (pk > 0 && pk < 1 ? 1 : 0) * cohortOn, x: lerp(CX - 17, pp.x + 23, pk), y: lerp(CY - 21, pp.y + 19, pk) - Math.sin(pk * Math.PI) * 80, r: pk * 360 });
+  });
+  s5.links.forEach((ln, i) => {
+    const k = E.out(p(t, 17.9 + (i % 6) * .05, 18.3 + (i % 6) * .05));
+    ln.style.opacity = k * cohortOn * (.35 + .5 * Math.max(0, Math.sin(A * 5 + i * 1.3)));
+  });
+  tf(s5.live, { o: E.out(p(t, 18.1, 18.4)) * cohortOn, s: E.back(p(t, 18.1, 18.45)) });
+  s5.live.querySelector('.ld').style.opacity = .4 + .6 * Math.abs(Math.sin(A * 6));
+  s5.notes.forEach((n, i) => tf(n, { o: E.out(p(t, 17.0 + i * .2, 17.35 + i * .2)) * cohortOn, x: (1 - E.out(p(t, 17.0 + i * .2, 17.35 + i * .2))) * -30 }));
+  tf(s5.clock, { o: E.out(p(t, 19.25, 19.5)) * in5 });
+  const cf = E.io(p(t, 19.4, 20.4));
+  s5.clockF.style.width = `${cf * 100}%`;
+  s5.marks.forEach((m, i) => {
+    const k = E.back(p(t, 19.4 + CLOCK[i][3] * 1.0, 19.7 + CLOCK[i][3] * 1.0));
+    m.style.opacity = clamp(k); m.style.translate = `0 ${(1 - k) * 20}px`;
+    const own = m.querySelector('.own');
+    if (own) own.style.opacity = E.out(p(t, 19.6 + CLOCK[i][3] * 1.0, 19.85 + CLOCK[i][3] * 1.0));
+  });
+
+  /* S6 — evidence */
+  const in6 = env(t, 21.0, 24.4, .35, .3);
+  tf(s6.kicker, { o: in6, y: (1 - E.out(p(t, 21, 21.4))) * 20 });
+  s6.h.forEach((h, i) => { const k = E.out(p(t, 21.1 + i * .15, 21.6 + i * .15)); tf(h, { o: k * in6, y: (1 - k) * 50 }); });
+  const pk6 = E.out(p(t, 21.15, 21.6));
+  tf(s6.panel, { o: pk6 * in6, x: (1 - pk6) * 120 });
+  s6.cells.forEach(c => {
+    const r = +c.dataset.r, col = +c.dataset.c;
+    const k = p(t, 21.5 + (r + col) * .06, 21.7 + (r + col) * .06);
+    c.style.background = k > .5 ? LC[+c.dataset.l] : 'var(--mist)';
+    c.style.transform = `scale(${.6 + .4 * E.back(k)})`;
+  });
+  const focusCell = s6.cells.find(c => c.dataset.l === '0');
+  const fr = at(focusCell);
+  const pulse = t > 22.6 ? ((A - forward(22.6)) % .8) / .8 : 0;
+  tf(s6.ringNode, { o: (t > 22.6 ? (1 - pulse) : 0) * in6, x: fr.x + fr.w / 2 - 48, y: fr.y + fr.h / 2 - 38, s: .7 + pulse * .5 });
+  const tk = E.back(p(t, 22.7, 23.1));
+  tf(s6.toast, { o: clamp(tk) * in6, y: (1 - tk) * 80 });
+  s6.notes.forEach((n, i) => tf(n, { o: E.out(p(t, 21.7 + i * .25, 22.05 + i * .25)) * in6, x: (1 - E.out(p(t, 21.7 + i * .25, 22.05 + i * .25))) * -30 }));
+
+  /* S7 */
+  const in7 = env(t, 24.4, 27.4, .35, .3);
+  const hk7 = E.out(p(t, 24.45, 24.9));
+  tf(s7.h, { o: hk7 * in7, y: (1 - hk7) * 40, s: .94 + .06 * hk7 });
+  tf(s7.hdrL, { o: E.out(p(t, 24.7, 25)) * in7 });
+  tf(s7.hdrR, { o: E.out(p(t, 24.7, 25)) * in7 });
+  s7.rows.forEach((r, i) => {
+    const a = 24.8 + i * .42;
+    const kl = E.out(p(t, a, a + .3));
+    tf(r.l, { o: kl * in7 * (1 - .45 * p(t, a + .35, a + .6)), x: (1 - kl) * -30 });
+    r.strike.style.width = `calc(${E.io(p(t, a + .25, a + .55)) * 100}% + 12px)`;
+    tf(r.arrow, { o: E.out(p(t, a + .35, a + .55)) * in7, x: (1 - E.out(p(t, a + .35, a + .55))) * -20 });
+    const kr = E.back(p(t, a + .4, a + .75));
+    tf(r.r, { o: clamp(kr) * in7, x: (1 - kr) * 60 });
+  });
+
+  /* S8 */
+  const in8 = E.out(p(t, 27.55, 28.1));
+  s8.logo.style.clipPath = `inset(0 ${(1 - E.out(p(t, 27.55, 28.15))) * 100}% 0 0)`;
+  tf(s8.logo, { o: in8 > 0 ? 1 : 0, s: 1.06 - .06 * in8 });
+  const tg = E.out(p(t, 28.05, 28.55));
+  tf(s8.tag, { o: tg, y: (1 - tg) * 40 });
+  const ct = E.back(p(t, 28.5, 28.9));
+  tf(s8.cta, { o: clamp(ct), y: (1 - ct) * 30 });
+
+  progF.style.width = `${(A / TOTAL) * 100}%`;
+}
+
+/* ───────── fit to window + realtime preview (skipped when rendering frames) ───────── */
+function fit() { const s = Math.min(innerWidth / 1920, innerHeight / 1080); stage.style.transform = `scale(${s})`; }
+window.render = render;
+window.TIMELINE = { TOTAL, DUR, HOLDS, forward };
+if (!new URLSearchParams(location.search).has('render')) {
+  fit(); addEventListener('resize', fit);
+  let t0 = performance.now(), paused = false, tp = 0;
+  addEventListener('keydown', e => {
+    if (e.code === 'Space') { paused = !paused; t0 = performance.now() - tp * 1000; }
+    if (e.code === 'ArrowRight') { tp = Math.min(TOTAL, tp + 1); t0 = performance.now() - tp * 1000; }
+    if (e.code === 'ArrowLeft') { tp = Math.max(0, tp - 1); t0 = performance.now() - tp * 1000; }
+  });
+  (function loop() { if (!paused) tp = ((performance.now() - t0) / 1000) % TOTAL; render(tp); requestAnimationFrame(loop); })();
+} else { render(0); }
+</script>
+</body>
+</html>

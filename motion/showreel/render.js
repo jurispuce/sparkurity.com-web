@@ -1,4 +1,4 @@
-// Usage: node render.js frames <outDir> [fps]   → PNG frames (then ffmpeg) + out/cues.json for the soundtrack
+// Usage: [PAGE=organisations.html] node render.js frames <outDir> [fps]   → PNG frames (then ffmpeg) + out/cues.json for the soundtrack
 //        node render.js stills <outDir> v1 v2 …  → PNG stills at given video seconds
 const { chromium } = require('playwright');
 const path = require('path'), fs = require('fs');
@@ -7,7 +7,7 @@ const path = require('path'), fs = require('fs');
   fs.mkdirSync(out, { recursive: true });
   const b = await chromium.launch();
   const page = await b.newPage({ viewport: { width: 1920, height: 1080 } });
-  await page.goto('file://' + path.resolve(__dirname, 'showreel.html') + '?render', { waitUntil: 'load' });
+  await page.goto('file://' + path.resolve(__dirname, process.env.PAGE || 'showreel.html') + '?render', { waitUntil: 'load' });
   await page.evaluate(() => document.fonts.ready);
   const shot = async (t, file) => {
     await page.evaluate(t => window.render(t), t);
@@ -31,6 +31,6 @@ const path = require('path'), fs = require('fs');
     hits: [3.3, 27.5].map(TIMELINE.forward),
     ticks: [0.25, 0.65, 1.05, 1.95, 2.1, 2.25].map(TIMELINE.forward),
   }));
-  fs.writeFileSync(path.join(__dirname, 'out', 'cues.json'), JSON.stringify(cues, null, 1));
+  fs.writeFileSync(path.join(__dirname, 'out', path.basename(process.env.PAGE || 'showreel.html', '.html') + '.cues.json'), JSON.stringify(cues, null, 1));
   await b.close();
 })();

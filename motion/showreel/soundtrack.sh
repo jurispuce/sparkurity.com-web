@@ -1,12 +1,13 @@
 #!/bin/bash
 # Synthesised bed: ambient pad + soft whooshes on scene cuts + low hits on the two logo moments.
-# Cue times come from out/cues.json, written by `node render.js frames …` (they include the reading pauses).
-# Usage: ./soundtrack.sh out/soundtrack.wav
+# Cue times come from out/<page>.cues.json, written by `node render.js frames …` (they include the reading pauses).
+# Usage: ./soundtrack.sh out/soundtrack.wav [out/showreel.cues.json]
 set -e
 cd "$(dirname "$0")"
 OUT=${1:-out/soundtrack.wav}
+CUES=${2:-out/showreel.cues.json}
 read -r D CUTS HITS TICKS < <(python3 -c "
-import json; c=json.load(open('out/cues.json'))
+import json; c=json.load(open('$CUES'))
 f=lambda xs: ','.join('%.3f'%x for x in xs)
 print('%.3f'%c['total'], f(c['cuts']), f(c['hits']), f(c['ticks']))")
 W=""; for c in ${CUTS//,/ }; do W="$W+0.22*(random(0)*2-1)*exp(-pow((t-$c+0.12)/0.13,2))"; done
