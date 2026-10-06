@@ -1,0 +1,610 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Sparkurity — 30-second showreel</title>
+<!--
+  30 s · 1920×1080 · 30 fps motion piece. Deterministic: every frame is render(t).
+  Preview in a browser (plays in real time, press space to pause, ←/→ to scrub),
+  or render frames with render.js → ffmpeg. Fonts are local (fonts/) so frames are reproducible.
+-->
+<style>
+@font-face { font-family: 'Fraunces'; src: url('fonts/fraunces.woff2') format('woff2'); font-weight: 100 900; }
+@font-face { font-family: 'Inter'; src: url('fonts/inter.woff2') format('woff2'); font-weight: 100 900; }
+@font-face { font-family: 'JetBrains Mono'; src: url('fonts/jetbrains-mono-latin-400-normal.woff2') format('woff2'); font-weight: 400; }
+@font-face { font-family: 'JetBrains Mono'; src: url('fonts/jetbrains-mono-latin-600-normal.woff2') format('woff2'); font-weight: 600; }
+:root {
+  --spark:#4A95D1; --action:#2F6FA3; --blue-800:#25557C; --blue-100:#D4E6F5; --blue-50:#EDF4FB;
+  --petrol:#2C6374; --petrol-dark:#214B58; --petrol-100:#C4D8D4; --petrol-50:#EAF1F0;
+  --ink:#2B2C2E; --body:#56575A; --grey:#6D6E71; --grey-200:#CFCFD1; --line:#E7E7E8; --mist:#F4F4F5; --stripe:#FAFBFB;
+  --terra:#B25C43; --terra-200:#E4C4B8; --terra-50:#F7EDE9; --success:#2F855A; --success-50:#E7F2EC;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { background: #000; overflow: hidden; }
+#stage { position: relative; width: 1920px; height: 1080px; overflow: hidden; background: var(--mist); font-family: 'Inter', sans-serif; color: var(--ink); transform-origin: 0 0; }
+.abs { position: absolute; will-change: transform, opacity; }
+.bg { position: absolute; inset: 0; opacity: 0; }
+.kicker { font-family: 'JetBrains Mono', monospace; font-weight: 600; font-size: 22px; letter-spacing: .16em; text-transform: uppercase; color: var(--action); white-space: nowrap; }
+.h { font-family: 'Fraunces', serif; font-weight: 600; letter-spacing: -.01em; line-height: 1.05; white-space: nowrap; font-variation-settings: 'opsz' 144; }
+.mono { font-family: 'JetBrains Mono', monospace; text-transform: uppercase; letter-spacing: .08em; }
+.card { background: #fff; border: 1px solid var(--line); border-radius: 18px; box-shadow: 0 6px 16px rgba(37,85,124,.10); }
+.pill { display: inline-flex; align-items: center; gap: 8px; height: 34px; padding: 0 16px; border-radius: 999px; font-family: 'JetBrains Mono', monospace; font-weight: 600; font-size: 15px; letter-spacing: .06em; text-transform: uppercase; white-space: nowrap; }
+.glow { position: absolute; border-radius: 50%; background: radial-gradient(circle at center, rgba(74,149,209,.32), transparent 65%); pointer-events: none; }
+.dots { position: absolute; inset: -60px; background-image: radial-gradient(rgba(44,99,116,.13) 1.6px, transparent 1.7px); background-size: 40px 40px; }
+svg { overflow: visible; }
+</style>
+</head>
+<body>
+<div id="stage"></div>
+
+<script>
+/* ───────────────────────── helpers ───────────────────────── */
+const DUR = 30;
+const stage = document.getElementById('stage');
+const clamp = (v, a = 0, b = 1) => Math.min(b, Math.max(a, v));
+const p = (t, a, b) => clamp((t - a) / (b - a));
+const lerp = (a, b, k) => a + (b - a) * k;
+const E = {
+  out: k => 1 - Math.pow(1 - k, 3),
+  in: k => k * k * k,
+  io: k => k < .5 ? 4 * k * k * k : 1 - Math.pow(-2 * k + 2, 3) / 2,
+  back: k => { const c = 1.70158, c3 = c + 1; return 1 + c3 * Math.pow(k - 1, 3) + c * Math.pow(k - 1, 2); },
+  expo: k => k === 1 ? 1 : 1 - Math.pow(2, -10 * k),
+};
+// in/out envelope: fades in over [a,a+fi], out over [b-fo,b]
+const env = (t, a, b, fi = .35, fo = .3) => Math.min(E.out(p(t, a, a + fi)), 1 - E.in(p(t, b - fo, b)));
+
+function el(html, style = {}, parent = stage) {
+  const d = document.createElement('div');
+  d.className = 'abs';
+  d.innerHTML = html;
+  Object.assign(d.style, style);
+  parent.appendChild(d);
+  return d;
+}
+function svgEl(tag, attrs, parent) {
+  const n = document.createElementNS('http://www.w3.org/2000/svg', tag);
+  for (const k in attrs) n.setAttribute(k, attrs[k]);
+  parent.appendChild(n);
+  return n;
+}
+// set transform/opacity in one go
+function tf(node, { x = 0, y = 0, s = 1, r = 0, o = 1, sx, sy } = {}) {
+  node.style.transform = `translate(${x}px,${y}px) rotate(${r}deg) scale(${sx ?? s},${sy ?? s})`;
+  node.style.opacity = o;
+  node.style.visibility = o <= 0.001 ? 'hidden' : 'visible';
+}
+// word-by-word headline; returns updater(t, start, stagger)
+function words(node) {
+  const txt = node.textContent;
+  node.innerHTML = txt.split(' ').map(w => `<span style="display:inline-block;will-change:transform,opacity">${w}</span>`).join(' ');
+  const spans = [...node.children];
+  return (t, a, st = .07, d = .45) => spans.forEach((sp, i) => {
+    const k = E.out(p(t, a + i * st, a + i * st + d));
+    sp.style.transform = `translateY(${(1 - k) * 46}px)`;
+    sp.style.opacity = k;
+  });
+}
+const ICON = {
+  check: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>',
+  user: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>',
+  file: '<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>',
+  link: '<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>',
+  cursor: '<svg width="44" height="44" viewBox="0 0 24 24"><path d="M4 2l15 9.5-6.6 1.3L9 19z" fill="#fff" stroke="#2B2C2E" stroke-width="1.4" stroke-linejoin="round"/></svg>',
+};
+// Sparkurity mark: two spark-blue arrows + two grey arrows (from assets/logo/sparkurity-mark.svg)
+const MARK = [
+  { pts: '18.54 11.18 18.63 11.43 27.31 7.32 22.97 15.91 23.38 16.06 24.74 16.55 26.78 17.28 31.59 7.17 27.59 3.06 17.38 7.78 18.11 9.92 18.54 11.18', c: 'spark', from: [1, -1] },
+  { pts: '13.04 26.45 12.95 26.2 4.26 30.31 8.55 21.82 8.56 21.83 8.61 21.73 8.19 21.58 6.83 21.09 4.86 20.38 0 30.48 4 34.59 14.24 29.91 13.48 27.73 13.04 26.45', c: 'spark', from: [-1, 1] },
+  { pts: '.02 7.04 4.67 17.32 6.8 16.62 8.33 16.11 8.33 16.12 8.47 16.07 7.76 14.6 4.3 7.34 11.6 10.91 12.94 11.56 13.47 10.04 14.22 7.92 4.13 3.04 .02 7.04', c: 'grey', from: [-1, -1] },
+  { pts: '24.88 20.98 23.12 21.56 23.86 23.12 27.27 30.27 20.08 26.77 18.65 26.08 18.08 27.69 17.36 29.73 27.42 34.6 31.53 30.59 26.89 20.32 24.88 20.98', c: 'grey', from: [1, 1] },
+];
+function markSVG(size, onDark) {
+  const col = c => onDark ? (c === 'spark' ? '#fff' : 'rgba(255,255,255,.55)') : (c === 'spark' ? '#4A95D1' : '#6D6E71');
+  return `<svg width="${size}" height="${size * 34.6 / 31.6}" viewBox="0 0 31.6 34.6">${MARK.map(m => `<polygon fill="${col(m.c)}" points="${m.pts}"/>`).join('')}</svg>`;
+}
+
+/* ───────────────────────── persistent layers ───────────────────────── */
+const BG = {
+  mist: el('<div class="dots"></div>', { inset: 0, background: '#F4F4F5' }),
+  grey: el('', { inset: 0, background: '#E9E9EA' }),
+  petrol: el('<div class="glow" style="width:1300px;height:1300px;right:-380px;top:-480px"></div><div class="glow" style="width:900px;height:900px;left:-360px;bottom:-460px;opacity:.6"></div>', { inset: 0, background: 'var(--petrol)', overflow: 'hidden' }),
+  white: el('<div class="dots" style="opacity:.6"></div>', { inset: 0, background: '#fff' }),
+};
+Object.values(BG).forEach(b => { b.classList.add('bg'); b.classList.remove('abs'); });
+const wipe = el('', { left: '960px', top: '540px', width: '10px', height: '10px', marginLeft: '-5px', marginTop: '-5px', borderRadius: '50%', background: 'var(--petrol)' });
+
+/* ═════════ S1 · the standard LMS (0 – 3.2) ═════════ */
+const s1 = {};
+s1.kicker = el('<span class="kicker" style="color:var(--grey)">The standard LMS</span>', { left: '160px', top: '290px' });
+s1.lines = ['Same slides.', 'Same quiz.', 'For everyone.'].map((txt, i) =>
+  el(`<div class="h" style="font-size:104px;color:var(--ink);position:relative">${txt}<span class="strike" style="position:absolute;left:-8px;top:54%;height:9px;width:0;background:var(--terra);border-radius:5px"></span></div>`, { left: '160px', top: `${352 + i * 124}px` }));
+s1.slide = el(`<div class="card" style="width:400px;height:250px;padding:28px;background:#fff">
+  <div class="mono" style="font-size:15px;color:var(--grey)">Module 1 · slide <b class="n">1</b>/84</div>
+  <div style="margin-top:24px;height:16px;width:80%;background:#E2E2E4;border-radius:8px"></div>
+  <div style="margin-top:14px;height:16px;width:92%;background:#E2E2E4;border-radius:8px"></div>
+  <div style="margin-top:14px;height:16px;width:64%;background:#E2E2E4;border-radius:8px"></div>
+  <div style="position:absolute;right:24px;bottom:22px;padding:8px 16px;border-radius:8px;background:#CFCFD1;color:#fff;font-weight:700;font-size:15px">Next ›</div></div>`, { left: '1010px', top: '380px' });
+s1.n = s1.slide.querySelector('.n');
+s1.next = s1.slide.querySelector('div[style*="Next"]') || s1.slide.lastElementChild.lastElementChild;
+s1.wires = svgEl('svg', { width: 1920, height: 1080, style: 'position:absolute;left:0;top:0' }, stage);
+s1.people = [];
+for (let r = 0; r < 4; r++) for (let c = 0; c < 5; c++) {
+  const x = 1500 + c * 68, y = 390 + r * 72;
+  const d = el('<div style="width:46px;height:46px;border-radius:50%;background:#C7C7CA;display:flex;align-items:center;justify-content:center;color:#fff">' + ICON.user + '</div>', { left: `${x}px`, top: `${y}px` });
+  const ln = svgEl('line', { x1: 1410, y1: 505, x2: x + 23, y2: y + 23, stroke: '#CFCFD1', 'stroke-width': 2 }, s1.wires);
+  s1.people.push({ d, ln });
+}
+s1.cap = el('<div class="mono" style="font-size:18px;color:var(--grey);font-weight:600">40 hours · one path · everyone</div>', { left: '1010px', top: '710px' });
+s1.bar = el('<div style="width:840px;height:10px;border-radius:5px;background:#D9D9DB;overflow:hidden"><div class="f" style="height:100%;width:0;background:#A7A7AA"></div></div>', { left: '1010px', top: '760px' });
+s1.barF = s1.bar.querySelector('.f');
+s1.barL = el('<div class="mono" style="font-size:16px;color:var(--grey)">Completion <b class="c">0</b>%</div>', { left: '1010px', top: '786px' });
+s1.c = s1.barL.querySelector('.c');
+
+/* ═════════ S2 · logo reveal (3.2 – 5.6) ═════════ */
+const s2 = {};
+s2.mark = el(markSVG(240, true), { left: '840px', top: '250px' });
+s2.polys = [...s2.mark.querySelectorAll('polygon')];
+s2.logo = el('<img src="sparkurity-logo-white.svg" style="width:1000px;display:block">', { left: '460px', top: '400px' });
+s2.tag = el('<div class="h" style="font-size:58px;color:#fff;text-align:center;width:1600px">The expert in the room — for every learner.</div>', { left: '160px', top: '610px' });
+s2.tagW = words(s2.tag.firstChild);
+
+/* ═════════ persistent chrome (S3 – S7) ═════════ */
+const chrome = {};
+chrome.logoC = el('<img src="sparkurity-logo.svg" style="width:220px;display:block">', { left: '160px', top: '72px' });
+chrome.logoW = el('<img src="sparkurity-logo-white.svg" style="width:220px;display:block">', { left: '160px', top: '72px' });
+const CH = ['AI course builder', 'Learning paths', 'Cohorts', 'Insight'];
+chrome.rail = el(`<div style="display:flex;gap:16px">${CH.map((c, i) => `<div style="width:220px"><div class="mono lbl" style="font-size:14px;font-weight:600;margin-bottom:10px">0${i + 1} · ${c}</div><div style="height:4px;border-radius:2px;background:rgba(127,127,127,.22);overflow:hidden"><div class="f" style="height:100%;width:0;background:var(--spark)"></div></div></div>`).join('')}</div>`, { right: '160px', top: '76px' });
+chrome.fills = [...chrome.rail.querySelectorAll('.f')];
+chrome.lbls = [...chrome.rail.querySelectorAll('.lbl')];
+
+/* ═════════ S3 · instructor: course builder + AI grading (5.6 – 10.6) ═════════ */
+const s3 = {};
+s3.kicker = el('<span class="kicker">01 · For instructors</span>', { left: '160px', top: '200px' });
+s3.hA = ['Your sources in.', 'A course out.'].map((t, i) => el(`<div class="h" style="font-size:88px">${t}</div>`, { left: '160px', top: `${250 + i * 100}px` }));
+s3.hB = ['AI drafts.', 'You decide.'].map((t, i) => el(`<div class="h" style="font-size:88px">${t}</div>`, { left: '160px', top: `${250 + i * 100}px` }));
+const FILES = [['ISO 27001 controls', 'PDF', 'file'], ['Audit workshop', 'PPTX', 'file'], ['Case notes', 'DOCX', 'file'], ['NIS2 directive', 'URL', 'link'], ['Interview guide', 'PDF', 'file']];
+s3.files = FILES.map((f, i) => el(`<div class="card" style="display:flex;align-items:center;gap:16px;width:400px;height:76px;padding:0 22px;border-radius:14px">
+  <span style="color:var(--action)">${ICON[f[2]]}</span><span style="font-weight:600;font-size:22px;flex:1">${f[0]}</span><span class="mono" style="font-size:14px;color:var(--grey);font-weight:600">${f[1]}</span></div>`, { left: '160px', top: `${520 + i * 92}px` }));
+s3.node = el(`<div style="position:relative;width:220px;height:220px">
+  <svg class="ring" width="220" height="220" viewBox="0 0 220 220" style="position:absolute;inset:0"><circle cx="110" cy="110" r="104" fill="none" stroke="#4A95D1" stroke-width="3" stroke-dasharray="14 12"/></svg>
+  <div style="position:absolute;inset:22px;border-radius:50%;background:var(--petrol);display:flex;align-items:center;justify-content:center;box-shadow:0 20px 50px rgba(37,85,124,.35)">${markSVG(82, true)}</div></div>
+  <div class="mono" style="text-align:center;margin-top:18px;font-size:16px;font-weight:600;color:var(--petrol)">AI course builder</div>`, { left: '700px', top: '560px', width: '220px' });
+s3.ring = s3.node.querySelector('.ring');
+const MODS = [['Audit principles', 'Lesson', 'lesson'], ['NIS2 essentials', 'Lesson', 'lesson'], ['Evidence & sampling', 'Exercise', 'ex'], ['Interview role-play', 'Scenario', 'scen'], ['Writing findings', 'Exercise', 'ex'], ['Gate quiz', 'Quiz', 'quiz']];
+const KIND = { lesson: ['var(--blue-800)', 'var(--blue-50)'], ex: ['var(--petrol)', 'var(--petrol-50)'], scen: ['var(--terra)', 'var(--terra-50)'], quiz: ['var(--petrol-dark)', '#E3EDEB'] };
+s3.mods = MODS.map((m, i) => el(`<div class="card" style="width:370px;height:132px;padding:22px 24px;border-radius:16px">
+  <span class="pill" style="height:28px;font-size:13px;padding:0 12px;color:${KIND[m[2]][0]};background:${KIND[m[2]][1]}">${m[1]}</span>
+  <div style="font-family:Fraunces;font-weight:600;font-size:29px;margin-top:14px;white-space:nowrap">${m[0]}</div>
+  <div class="mono" style="position:absolute;right:22px;top:24px;font-size:14px;color:var(--grey)">M${i + 1}</div></div>`, { left: `${1010 + (i % 2) * 394}px`, top: `${300 + Math.floor(i / 2) * 152}px` }));
+s3.cov = el(`<div style="width:764px"><div style="display:flex;justify-content:space-between;align-items:baseline"><span class="mono" style="font-size:16px;font-weight:600;color:var(--body)">Learning objectives covered</span><span style="font-family:Fraunces;font-weight:600;font-size:40px"><b class="n">0</b>/12</span></div>
+  <div style="height:12px;border-radius:6px;background:var(--line);margin-top:10px;overflow:hidden"><div class="f" style="height:100%;width:0;background:var(--success);border-radius:6px"></div></div></div>`, { left: '1010px', top: '780px' });
+s3.covN = s3.cov.querySelector('.n'); s3.covF = s3.cov.querySelector('.f');
+// grading panel
+const RUB = [['Finding is evidence-based', .8], ['Nonconformity graded correctly', .5], ['Clear corrective action', .7]];
+s3.grade = el(`<div class="card" style="width:1000px;padding:40px 44px;border-radius:22px;box-shadow:0 30px 70px rgba(37,85,124,.18)">
+  <div style="display:flex;justify-content:space-between;align-items:center">
+    <span class="mono" style="font-size:16px;font-weight:600;color:var(--grey)">Written answer · Internal auditor · M5</span>
+    <span class="badge pill" style="color:var(--blue-800);background:var(--blue-50);border:1px solid var(--blue-100)">AI draft <b class="sc">7</b>/10</span></div>
+  <p style="margin-top:22px;font-size:23px;line-height:1.5;color:var(--body);border-left:4px solid var(--blue-100);padding-left:18px">“Access reviews are documented, but evidence for Q3 is missing. I'd record a minor nonconformity against A.5.18…”</p>
+  <div class="rows" style="margin-top:28px;display:grid;gap:18px">${RUB.map(r => `<div style="display:grid;grid-template-columns:420px 1fr 70px;align-items:center;gap:20px">
+    <span style="font-size:21px;font-weight:600">${r[0]}</span>
+    <span style="height:14px;border-radius:7px;background:var(--line);overflow:hidden"><span class="f" style="display:block;height:100%;width:0;background:var(--spark);border-radius:7px"></span></span>
+    <span class="v mono" style="font-size:18px;font-weight:600;text-align:right">0</span></div>`).join('')}</div>
+  <div style="display:flex;gap:16px;margin-top:34px;align-items:center">
+    <span class="b1" style="padding:16px 30px;border-radius:10px;background:var(--action);color:#fff;font-weight:700;font-size:21px">Approve</span>
+    <span class="b2" style="padding:16px 30px;border-radius:10px;border:1.5px solid var(--grey-200);color:var(--ink);font-weight:700;font-size:21px">Override</span>
+    <span class="mono" style="margin-left:auto;font-size:15px;color:var(--grey)">Same rubric for every learner</span></div></div>`, { left: '760px', top: '300px' });
+s3.gf = [...s3.grade.querySelectorAll('.rows .f')];
+s3.gv = [...s3.grade.querySelectorAll('.rows .v')];
+s3.badge = s3.grade.querySelector('.badge'); s3.sc = s3.grade.querySelector('.sc');
+s3.b2 = s3.grade.querySelector('.b2');
+s3.cursor = el(ICON.cursor, { left: '0px', top: '0px', zIndex: 20 });
+s3.click = el('<div style="width:70px;height:70px;border-radius:50%;border:3px solid var(--spark)"></div>', { left: '0px', top: '0px', zIndex: 19 });
+
+/* ═════════ S4 · skill-based learning paths (10.6 – 16.0) ═════════ */
+const s4 = {};
+s4.kicker = el('<span class="kicker">02 · Skill-based learning paths</span>', { left: '160px', top: '200px' });
+s4.h = ['Start where you are.', 'Skip what you know.'].map((t, i) => el(`<div class="h" style="font-size:80px">${t}</div>`, { left: '160px', top: `${244 + i * 92}px` }));
+const LANES = [
+  { who: 'Finance manager', lvl: 'Experienced', ini: 'FM', st: ['skip', 'skip', 'review', 'focus', 'std', 'skip'] },
+  { who: 'Platform engineer', lvl: 'Intermediate', ini: 'PE', st: ['skip', 'review', 'std', 'focus', 'focus', 'std'] },
+  { who: 'Support lead', lvl: 'New to security', ini: 'SL', st: ['review', 'std', 'focus', 'std', 'gate', 'std'] },
+];
+const MCOL = ['Principles', 'NIS2', 'Controls', 'Evidence', 'Findings', 'Reporting'];
+const MX = i => 760 + i * 196, LY = j => 600 + j * 150;
+s4.cols = MCOL.map((m, i) => el(`<div class="mono" style="width:160px;text-align:center;font-size:15px;font-weight:600;color:var(--grey)">M${i + 1}<br><span style="font-family:Inter;text-transform:none;letter-spacing:0;font-size:18px;color:var(--ink)">${m}</span></div>`, { left: `${MX(i) - 80}px`, top: '450px' }));
+s4.svg = svgEl('svg', { width: 1920, height: 1080, style: 'position:absolute;left:0;top:0' }, stage);
+s4.lanes = LANES.map((L, j) => {
+  const y = LY(j);
+  const card = el(`<div class="card" style="display:flex;align-items:center;gap:16px;width:440px;height:110px;padding:0 22px;border-radius:16px">
+    <span style="width:60px;height:60px;border-radius:50%;background:var(--petrol);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:21px">${L.ini}</span>
+    <span style="flex:1"><span style="display:block;font-weight:700;font-size:23px">${L.who}</span><span class="mono" style="font-size:14px;color:var(--grey);font-weight:600">${L.lvl}</span>
+    <span style="display:block;height:6px;border-radius:3px;background:var(--line);margin-top:8px;overflow:hidden"><span class="f" style="display:block;height:100%;width:0;background:var(--action)"></span></span></span>
+    <span class="ok" style="color:var(--success)">${ICON.check}</span></div>`, { left: '160px', top: `${y - 55}px` });
+  // path: through each node, arcing over skipped modules
+  let d = `M ${612} ${y}`;
+  L.st.forEach((s, i) => { const x = MX(i); d += s === 'skip' ? ` Q ${x} ${y - 70} ${x + 46} ${y}` : ` L ${x} ${y}`; });
+  d += ` L ${MX(5) + 120} ${y}`;
+  const path = svgEl('path', { d, fill: 'none', stroke: 'var(--action)', 'stroke-width': 5, 'stroke-linecap': 'round', 'stroke-linejoin': 'round' }, s4.svg);
+  const len = path.getTotalLength();
+  path.style.strokeDasharray = len; path.style.strokeDashoffset = len;
+  const nodes = L.st.map((s, i) => {
+    const look = {
+      skip: ['transparent', '2.5px dashed #CFCFD1', 'var(--success)', 'Skip', 'var(--success-50)'],
+      review: ['var(--blue-50)', '3px solid var(--action)', 'var(--blue-800)', 'Review', 'var(--blue-50)'],
+      std: ['#fff', '3px solid var(--grey-200)', 'var(--body)', 'Standard', 'var(--mist)'],
+      focus: ['var(--terra)', '3px solid var(--terra)', 'var(--terra)', 'Focus', 'var(--terra-50)'],
+      gate: ['var(--terra)', '3px solid var(--terra)', 'var(--terra)', 'Focus', 'var(--terra-50)'],
+    }[s];
+    const n = el(`<div class="dot" style="width:48px;height:48px;border-radius:50%;background:${look[0]};border:${look[1]};display:flex;align-items:center;justify-content:center;color:#fff"></div>
+      <span class="pill tag" style="position:absolute;left:50%;top:58px;transform:translateX(-50%);height:26px;font-size:12px;padding:0 10px;color:${look[2]};background:${look[4]}">${look[3]}</span>`, { left: `${MX(i) - 24}px`, top: `${y - 24}px` });
+    // where along the path this node sits (for reveal timing)
+    return { n, s, frac: (i + .5) / 6.6 };
+  });
+  return { card, path, len, nodes, fill: card.querySelector('.f'), ok: card.querySelector('.ok') };
+});
+// mastery loop on lane 3, M5 → back to M4
+const ly3 = LY(2);
+s4.loop = svgEl('path', { d: `M ${MX(4)} ${ly3 + 26} C ${MX(4)} ${ly3 + 96}, ${MX(3)} ${ly3 + 96}, ${MX(3)} ${ly3 + 30}`, fill: 'none', stroke: 'var(--terra)', 'stroke-width': 4, 'stroke-dasharray': '10 9', 'stroke-linecap': 'round' }, s4.svg);
+s4.loopHead = svgEl('polygon', { points: `${MX(3) - 10},${ly3 + 44} ${MX(3) + 10},${ly3 + 44} ${MX(3)},${ly3 + 28}`, fill: 'var(--terra)' }, s4.svg);
+s4.loopLbl = el('<span class="pill" style="color:var(--terra);background:var(--terra-50);border:1px solid var(--terra-200)">↺ Not yet · roadmap updates</span>', { left: `${MX(3) - 30}px`, top: `${ly3 + 92}px` });
+s4.gateX = el('<span class="pill" style="height:28px;font-size:13px;color:#fff;background:var(--terra)">Gate ✕</span>', { left: `${MX(4) - 46}px`, top: `${ly3 - 64}px` });
+s4.gateOk = el(`<span class="pill" style="height:28px;font-size:13px;color:#fff;background:var(--success)">Mastered</span>`, { left: `${MX(4) - 52}px`, top: `${ly3 - 64}px` });
+s4.approve = el(`<span style="display:inline-flex;align-items:center;gap:10px;font-weight:700;font-size:22px;color:var(--petrol)">${ICON.user} Instructor approves every skip</span>`, { left: '1180px', top: '355px' });
+
+/* ═════════ S5 · cohort (16.0 – 21.0) ═════════ */
+const s5 = {};
+s5.kicker = el('<span class="kicker" style="color:var(--blue-100)">03 · Cohort-based learning</span>', { left: '160px', top: '200px' });
+s5.hA = ['Then practise', 'together — in role.'].map((t, i) => el(`<div class="h" style="font-size:84px;color:#fff">${t}</div>`, { left: '160px', top: `${250 + i * 96}px` }));
+s5.hB = ['Fewer hours in class.', 'More time practising.'].map((t, i) => el(`<div class="h" style="font-size:84px;color:#fff">${t}</div>`, { left: '160px', top: `${250 + i * 96}px` }));
+const CX = 1330, CY = 640, R = 285;
+s5.lines = svgEl('svg', { width: 1920, height: 1080, style: 'position:absolute;left:0;top:0' }, stage);
+s5.case = el(`<div class="card" style="width:300px;padding:26px 26px;border-radius:18px;text-align:center;border:none">
+  <div class="mono" style="font-size:14px;font-weight:600;color:var(--action)">Case</div>
+  <div style="font-family:Fraunces;font-weight:600;font-size:31px;line-height:1.15;margin-top:8px">Simulated internal audit</div>
+  <div class="mono" style="font-size:13px;color:var(--grey);margin-top:12px">NIS2 · ISO 27001</div></div>`, { left: `${CX - 150}px`, top: `${CY - 92}px` });
+const ROLES = [['Lead auditor', 'var(--spark)', '#fff'], ['Auditor', '#fff', 'var(--petrol)'], ['Auditee', 'var(--terra)', '#fff']];
+s5.people = [];
+for (let i = 0; i < 9; i++) {
+  const a = -Math.PI / 2 + i * 2 * Math.PI / 9;
+  const role = ROLES[i % 3];
+  const n = el(`<div class="dot" style="width:76px;height:76px;border-radius:50%;background:rgba(255,255,255,.16);border:2px solid rgba(255,255,255,.4);display:flex;align-items:center;justify-content:center;color:#fff">${ICON.user}</div>
+    <span class="pill role" style="position:absolute;left:50%;top:84px;transform:translateX(-50%);height:26px;font-size:12px;padding:0 10px;background:${role[1]};color:${role[2]}">${role[0]}</span>`, { left: '0px', top: '0px' });
+  s5.people.push({ n, x: CX + R * Math.cos(a) - 38, y: CY + R * Math.sin(a) - 38, role, dot: n.querySelector('.dot'), tag: n.querySelector('.role') });
+}
+s5.packs = s5.people.map((pp, i) => el(`<div style="width:34px;height:42px;border-radius:5px;background:#fff;box-shadow:0 4px 10px rgba(0,0,0,.25);border-top:5px solid ${pp.role[1] === '#fff' ? 'var(--petrol-100)' : pp.role[1]}"></div>`, { left: '0px', top: '0px' }));
+s5.links = [];
+for (let i = 0; i < 9; i++) for (const j of [(i + 1) % 9, (i + 3) % 9]) {
+  const a = s5.people[i], b = s5.people[j];
+  s5.links.push(svgEl('line', { x1: a.x + 38, y1: a.y + 38, x2: b.x + 38, y2: b.y + 38, stroke: '#D4E6F5', 'stroke-width': 2.5, 'stroke-linecap': 'round' }, s5.lines));
+}
+s5.live = el('<span class="pill" style="height:42px;font-size:17px;padding:0 20px;color:var(--petrol);background:#fff"><span class="ld" style="width:12px;height:12px;border-radius:50%;background:var(--terra)"></span>Live session · 2 h</span>', { left: `${CX - 125}px`, top: `${CY + 340}px` });
+s5.notes = ['Each role gets its own briefing pack', 'Discussion, role-play, live sessions', 'Small cohorts, shared deadlines'].map((t, i) =>
+  el(`<div style="display:flex;align-items:center;gap:14px;color:#fff;font-size:26px;font-weight:600"><span style="color:var(--spark)">${ICON.check}</span>${t}</div>`, { left: '160px', top: `${560 + i * 64}px` }));
+// hours bars
+s5.hours = el(`<div style="width:1600px">
+  <div class="row" style="display:grid;grid-template-columns:330px 1fr;align-items:center;gap:30px">
+    <span style="color:#fff;font-weight:700;font-size:28px">Classroom course</span>
+    <span style="display:flex;align-items:center;gap:20px"><span class="b0" style="display:block;height:58px;width:0;background:rgba(255,255,255,.28);border-radius:0 8px 8px 0"></span><span class="v0 mono" style="color:#fff;font-size:30px;font-weight:600">32 h live</span></span></div>
+  <div class="row" style="display:grid;grid-template-columns:330px 1fr;align-items:center;gap:30px;margin-top:40px">
+    <span style="color:#fff;font-weight:700;font-size:28px">Sparkurity cohort</span>
+    <span style="display:flex;align-items:center;gap:0;position:relative">
+      <span class="b1" style="display:block;height:58px;width:0;background:#fff;border-radius:0 8px 8px 0"></span>
+      <span class="b2" style="display:block;height:58px;width:0;border:2.5px dashed var(--spark);border-left:none;border-radius:0 8px 8px 0;background:repeating-linear-gradient(135deg,rgba(74,149,209,.22) 0 10px,transparent 10px 20px)"></span>
+      <span class="v1 mono" style="color:#fff;font-size:30px;font-weight:600;margin-left:20px;white-space:nowrap">8 h live</span></span></div>
+  <div class="l2" style="margin-left:360px;margin-top:18px;color:var(--blue-100);font-size:24px;font-weight:600">+ adaptive self-study — skip what you already know</div></div>`, { left: '160px', top: '600px' });
+s5.b0 = s5.hours.querySelector('.b0'); s5.b1 = s5.hours.querySelector('.b1'); s5.b2 = s5.hours.querySelector('.b2'); s5.l2 = s5.hours.querySelector('.l2');
+s5.v0 = s5.hours.querySelector('.v0'); s5.v1 = s5.hours.querySelector('.v1');
+
+/* ═════════ S6 · insight (21.0 – 24.4) ═════════ */
+const s6 = {};
+s6.kicker = el('<span class="kicker">04 · Instructor in charge</span>', { left: '160px', top: '200px' });
+s6.h = ['See who is stuck', 'before it is too late.'].map((t, i) => el(`<div class="h" style="font-size:80px">${t}</div>`, { left: '160px', top: `${244 + i * 92}px` }));
+s6.notes = ['Progress heatmap & alerts', 'Every AI change in the audit log', 'AI suggests — you approve'].map((t, i) =>
+  el(`<div style="display:flex;align-items:center;gap:14px;font-size:27px;font-weight:600"><span style="width:40px;height:40px;border-radius:10px;background:var(--petrol-50);color:var(--petrol);display:flex;align-items:center;justify-content:center">${ICON.check}</span>${t}</div>`, { left: '160px', top: `${560 + i * 74}px` }));
+const NAMES = ['AK', 'LO', 'MB', 'JR', 'EV', 'TS', 'IK', 'RD', 'NP'];
+const STATE = (r, c) => (r === 1 && c === 3) ? 'stuck' : (c + r * .7 < 4.2 ? (((r * 7 + c * 3) % 5 === 0) ? 'skip' : 'done') : (c + r * .7 < 5.2 ? 'prog' : 'todo'));
+s6.panel = el(`<div class="card" style="width:820px;padding:30px 34px;border-radius:22px;box-shadow:0 30px 70px rgba(37,85,124,.16)">
+  <div style="display:flex;justify-content:space-between"><span class="mono" style="font-size:15px;font-weight:600;color:var(--grey)">Cohort progress · week 2</span><span class="mono" style="font-size:15px;font-weight:600;color:var(--action)">Internal auditor</span></div>
+  <div style="display:grid;grid-template-columns:60px repeat(6,1fr);gap:8px;margin-top:22px">
+   <span></span>${MCOL.map((m, i) => `<span class="mono" style="text-align:center;font-size:14px;font-weight:600;color:var(--grey)">M${i + 1}</span>`).join('')}
+   ${NAMES.map((n, r) => `<span class="mono" style="font-size:15px;font-weight:600;line-height:44px">${n}</span>` + MCOL.map((_, c) => `<span class="cell" data-s="${STATE(r, c)}" data-r="${r}" data-c="${c}" style="height:44px;border-radius:8px;background:var(--mist)"></span>`).join('')).join('')}
+  </div></div>`, { left: '940px', top: '180px' });
+s6.cells = [...s6.panel.querySelectorAll('.cell')];
+const CELLC = { done: 'var(--petrol)', skip: 'var(--success-50)', prog: 'var(--blue-100)', todo: 'var(--mist)', stuck: 'var(--terra)' };
+s6.toast = el(`<div class="card" style="display:flex;align-items:center;gap:18px;width:640px;padding:20px 24px;border-left:6px solid var(--terra);border-radius:14px;box-shadow:0 24px 50px rgba(0,0,0,.16)">
+  <span class="pill" style="color:var(--terra);background:var(--terra-50);border:1px solid var(--terra-200)">Alert</span>
+  <span><span style="display:block;font-weight:700;font-size:22px">LO · M4 · 3 failed gate attempts</span><span style="display:block;font-size:18px;color:var(--body);margin-top:4px">Roadmap updated — waiting for your review</span></span></div>`, { left: '1120px', top: '880px' });
+s6.ringNode = el('<div style="width:76px;height:76px;border-radius:12px;border:3px solid var(--terra)"></div>', { left: '0px', top: '0px' });
+
+/* ═════════ S7 · LMS vs Sparkurity (24.4 – 27.4) ═════════ */
+const s7 = {};
+s7.h = el('<div class="h" style="font-size:96px;text-align:center;width:1600px">Not another LMS.</div>', { left: '160px', top: '150px' });
+const ROWS = [['Same content for everyone', 'A path built from a skill check'], ['Click-through quizzes', 'Mastery gates & retrieval practice'], ['Learn alone', 'Cohorts with real roles'], ['Grade everything by hand', 'AI drafts — the instructor decides']];
+s7.hdrL = el('<span class="kicker" style="color:var(--grey)">Standard LMS</span>', { left: '200px', top: '330px' });
+s7.hdrR = el('<span class="kicker" style="color:var(--action)">Sparkurity</span>', { left: '1000px', top: '330px' });
+s7.rows = ROWS.map((r, i) => ({
+  l: el(`<div style="position:relative;font-size:34px;font-weight:600;color:var(--grey);white-space:nowrap">${r[0]}<span class="s" style="position:absolute;left:-6px;top:52%;height:5px;width:0;background:var(--terra);border-radius:3px"></span></div>`, { left: '200px', top: `${400 + i * 132}px` }),
+  arrow: el('<div style="font-size:44px;color:var(--spark);font-weight:700">→</div>', { left: '880px', top: `${394 + i * 132}px` }),
+  r: el(`<div class="card" style="display:flex;align-items:center;gap:18px;width:720px;height:96px;padding:0 26px;border-radius:16px"><span style="width:46px;height:46px;border-radius:12px;background:var(--action);color:#fff;display:flex;align-items:center;justify-content:center">${ICON.check}</span><span style="font-size:32px;font-weight:700;white-space:nowrap">${r[1]}</span></div>`, { left: '1000px', top: `${374 + i * 132}px` }),
+}));
+s7.rows.forEach(r => r.strike = r.l.querySelector('.s'));
+
+/* ═════════ S8 · end card (27.4 – 30) ═════════ */
+const s8 = {};
+s8.logo = el('<img src="sparkurity-logo-white.svg" style="width:880px;display:block">', { left: '520px', top: '330px' });
+s8.tag = el('<div class="h" style="font-size:60px;color:#fff;text-align:center;width:1600px">The expert in the room — for every learner,<br>at online scale.</div>', { left: '160px', top: '520px' });
+s8.cta = el('<div style="display:flex;gap:22px;align-items:center"><span style="padding:20px 38px;border-radius:12px;background:#fff;color:var(--petrol);font-weight:700;font-size:26px">Book a demo</span><span class="mono" style="color:var(--blue-100);font-size:26px;font-weight:600;letter-spacing:.12em">sparkurity.com</span></div>', { left: '640px', top: '780px' });
+
+/* timeline progress (whole piece) */
+const prog = el('<div style="height:6px;width:1920px;background:transparent"><div class="f" style="height:100%;width:0;background:var(--spark)"></div></div>', { left: '0px', top: '1074px', zIndex: 50 });
+const progF = prog.querySelector('.f');
+
+/* ───────────────────────── render(t) ───────────────────────── */
+function render(t) {
+  // backgrounds
+  BG.grey.style.opacity = t < 3.3 ? 1 : 0;
+  const darkS2 = t >= 2.9 && t < 5.75, darkS5 = t >= 15.85 && t < 21.0, darkS8 = t >= 27.2;
+  BG.petrol.style.opacity = Math.max(darkS2 ? (t < 3.3 ? 0 : 1) : 0, env(t, 15.85, 21.1, .3, .3), E.out(p(t, 27.2, 27.6)));
+  BG.mist.style.opacity = (t >= 5.4 && t < 24.6) ? 1 : 0;
+  BG.white.style.opacity = env(t, 24.25, 27.6, .3, .2);
+  BG.mist.firstChild.style.transform = `translate(${(t * 12) % 40}px,${(t * 7) % 40}px)`;
+  BG.white.firstChild.style.transform = `translate(${-(t * 10) % 40}px,0)`;
+  BG.petrol.querySelectorAll('.glow').forEach((g, i) => g.style.transform = `translate(${Math.sin(t * .6 + i) * 60}px,${Math.cos(t * .5 + i) * 40}px)`);
+
+  // wipe from S1 → S2 (petrol circle grows out of the strike)
+  const w = E.io(p(t, 2.85, 3.35));
+  wipe.style.transform = `scale(${w * 240})`;
+  wipe.style.opacity = t > 2.85 && t < 3.4 ? 1 : 0;
+
+  /* S1 */
+  const o1 = 1 - E.in(p(t, 2.75, 3.1));
+  tf(s1.kicker, { o: E.out(p(t, .1, .5)) * o1, y: (1 - E.out(p(t, .1, .5))) * 20 });
+  s1.lines.forEach((l, i) => {
+    const k = E.out(p(t, .25 + i * .4, .8 + i * .4));
+    tf(l, { o: k * o1, y: (1 - k) * 60, s: 1 - .06 * E.in(p(t, 2.75, 3.1)) });
+    l.querySelector('.strike').style.width = `calc(${E.io(p(t, 1.95 + i * .14, 2.4 + i * .14)) * 100}% + 16px)`;
+  });
+  const ks = E.back(p(t, .35, .85));
+  tf(s1.slide, { o: clamp(ks) * o1, s: .8 + .2 * ks });
+  const slideN = Math.min(84, 1 + Math.floor(Math.max(0, t - .9) * 9));
+  s1.n.textContent = slideN;
+  s1.people.forEach((pp, i) => {
+    const k = E.back(p(t, .55 + i * .03, 1.0 + i * .03));
+    tf(pp.d, { o: clamp(k) * o1, s: k });
+    pp.ln.style.opacity = E.out(p(t, .7 + i * .03, 1.1 + i * .03)) * o1 * (.55 + .45 * Math.abs(Math.sin(t * 6 + i)));
+  });
+  tf(s1.cap, { o: E.out(p(t, 1.0, 1.4)) * o1 });
+  tf(s1.bar, { o: E.out(p(t, 1.1, 1.5)) * o1 });
+  tf(s1.barL, { o: E.out(p(t, 1.1, 1.5)) * o1 });
+  const comp = Math.round(lerp(0, 3, p(t, 1.2, 2.6)));
+  s1.c.textContent = comp; s1.barF.style.width = `${comp}%`;
+
+  /* S2 */
+  const o2 = 1 - E.in(p(t, 5.25, 5.6));
+  const mk = p(t, 3.25, 4.05);
+  s2.polys.forEach((pl, i) => {
+    const k = E.back(clamp((mk - i * .08) / .7));
+    const f = MARK[i].from;
+    pl.setAttribute('transform', `translate(${f[0] * (1 - k) * 40} ${f[1] * (1 - k) * 40}) rotate(${(1 - k) * 90 * f[0]} 15.8 17.3)`);
+    pl.style.opacity = clamp(k * 1.5);
+  });
+  const mOut = E.io(p(t, 4.05, 4.45));
+  tf(s2.mark, { o: (t < 3.25 ? 0 : 1) * (1 - mOut), s: 1 - .55 * mOut, y: mOut * 90, x: mOut * -390 });
+  const lk = E.out(p(t, 4.15, 4.6));
+  s2.logo.style.clipPath = `inset(0 ${(1 - lk) * 100}% 0 0)`;
+  tf(s2.logo, { o: (lk > 0 ? 1 : 0) * o2, y: -20 * E.in(p(t, 5.25, 5.6)) });
+  s2.tagW(t, 4.55, .06, .4);
+  tf(s2.tag, { o: o2, y: -20 * E.in(p(t, 5.25, 5.6)) });
+
+  /* chrome */
+  const chromeOn = env(t, 5.6, 27.4, .4, .3);
+  const dark = t >= 16 && t < 21;
+  tf(chrome.logoC, { o: chromeOn * (dark ? 0 : 1) });
+  tf(chrome.logoW, { o: chromeOn * (dark ? 1 : 0) });
+  tf(chrome.rail, { o: env(t, 5.6, 24.4, .4, .3) });
+  const segs = [[5.6, 10.6], [10.6, 16], [16, 21], [21, 24.4]];
+  segs.forEach(([a, b], i) => {
+    chrome.fills[i].style.width = `${p(t, a, b) * 100}%`;
+    chrome.lbls[i].style.color = (t >= a && t < b) ? (dark ? '#fff' : 'var(--ink)') : (dark ? 'rgba(255,255,255,.5)' : 'var(--grey)');
+  });
+
+  /* S3 — builder */
+  const in3 = env(t, 5.6, 10.6, .4, .3);
+  tf(s3.kicker, { o: in3, y: (1 - E.out(p(t, 5.6, 6))) * 20 });
+  const swapA = E.io(p(t, 8.3, 8.65)), swapB = E.out(p(t, 8.55, 9.0));
+  s3.hA.forEach((h, i) => { const k = E.out(p(t, 5.7 + i * .15, 6.2 + i * .15)); tf(h, { o: k * (1 - swapA), y: (1 - k) * 50 - swapA * 50 }); });
+  s3.hB.forEach((h, i) => { const k = E.out(p(t, 8.55 + i * .12, 9.0 + i * .12)); tf(h, { o: k * in3, y: (1 - k) * 50 }); });
+  const nodeK = E.back(p(t, 6.2, 6.7));
+  tf(s3.node, { o: clamp(nodeK) * (1 - E.in(p(t, 8.2, 8.5))), s: nodeK * (1 + .05 * Math.sin(t * 10) * p(t, 6.9, 7.8) * (1 - p(t, 7.8, 8))) });
+  s3.ring.style.transform = `rotate(${t * 70}deg)`; s3.ring.style.transformOrigin = '110px 110px';
+  s3.files.forEach((f, i) => {
+    const kin = E.out(p(t, 5.95 + i * .1, 6.4 + i * .1));
+    const fly = E.io(p(t, 6.95 + i * .12, 7.5 + i * .12));
+    const tx = 810 - 360, ty = 670 - (520 + i * 92) - 38; // toward node centre
+    tf(f, { o: kin * (1 - fly), x: (1 - kin) * -80 + fly * tx, y: fly * ty, s: 1 - .7 * fly });
+  });
+  s3.mods.forEach((m, i) => {
+    const k = E.back(p(t, 7.45 + i * .12, 7.9 + i * .12));
+    const out = E.io(p(t, 8.2 + i * .03, 8.5 + i * .03));
+    tf(m, { o: clamp(k) * (1 - out), s: .7 + .3 * k, x: (1 - k) * -120 + out * 140 });
+  });
+  const cov = E.out(p(t, 7.6, 8.25));
+  tf(s3.cov, { o: E.out(p(t, 7.5, 7.8)) * (1 - E.in(p(t, 8.2, 8.45))) });
+  s3.covN.textContent = Math.round(cov * 12); s3.covF.style.width = `${cov * 100}%`;
+  // grading
+  const g = E.out(p(t, 8.55, 9.05));
+  tf(s3.grade, { o: g * in3, y: (1 - g) * 120 });
+  const over = E.io(p(t, 9.95, 10.25));
+  RUB.forEach((r, i) => {
+    const k = E.out(p(t, 8.95 + i * .12, 9.4 + i * .12));
+    let v = r[1] * k; if (i === 1) v = lerp(v, .8, over);
+    s3.gf[i].style.width = `${v * 100}%`;
+    s3.gf[i].style.background = (i === 1 && over > 0) ? 'var(--success)' : 'var(--spark)';
+    s3.gv[i].textContent = (v * 10).toFixed(0) + '/10';
+  });
+  const approved = t >= 10.15;
+  s3.sc.textContent = approved ? '8' : '7';
+  s3.badge.innerHTML = approved ? `${ICON.check.replace('22', '18').replace('22', '18')} Instructor approved 8/10` : `AI draft <b>7</b>/10`;
+  s3.badge.style.color = approved ? 'var(--success)' : 'var(--blue-800)';
+  s3.badge.style.background = approved ? 'var(--success-50)' : 'var(--blue-50)';
+  s3.badge.style.borderColor = approved ? '#BFDCCB' : 'var(--blue-100)';
+  s3.badge.style.transform = `scale(${1 + .12 * Math.sin(Math.PI * p(t, 10.15, 10.4))})`;
+  const cur = E.io(p(t, 9.45, 9.9));
+  const br = s3.b2.getBoundingClientRect(), sr3 = stage.getBoundingClientRect(), k3 = sr3.width / 1920;
+  const bx = (br.left - sr3.left) / k3 + 70, by = (br.top - sr3.top) / k3 + 26;
+  tf(s3.cursor, { o: env(t, 9.4, 10.55, .15, .2), x: lerp(1620, bx, cur), y: lerp(1010, by, cur), s: t > 9.92 && t < 10.02 ? .85 : 1 });
+  const ck = p(t, 9.95, 10.35);
+  tf(s3.click, { o: (1 - ck) * (ck > 0 ? 1 : 0), x: bx - 22, y: by - 22, s: .4 + ck * 1.2 });
+  s3.b2.style.borderColor = t > 9.9 && t < 10.3 ? 'var(--action)' : 'var(--grey-200)';
+  s3.b2.style.color = t > 9.9 && t < 10.3 ? 'var(--action)' : 'var(--ink)';
+
+  /* S4 — learning paths */
+  const in4 = env(t, 10.6, 16.0, .4, .3);
+  tf(s4.kicker, { o: in4, y: (1 - E.out(p(t, 10.6, 11))) * 20 });
+  s4.h.forEach((h, i) => { const k = E.out(p(t, 10.7 + i * .15, 11.2 + i * .15)); tf(h, { o: k * in4, y: (1 - k) * 50 }); });
+  s4.cols.forEach((c, i) => tf(c, { o: E.out(p(t, 11.3 + i * .05, 11.6 + i * .05)) * in4 }));
+  s4.lanes.forEach((L, j) => {
+    const k = E.out(p(t, 10.9 + j * .12, 11.35 + j * .12));
+    tf(L.card, { o: k * in4, x: (1 - k) * -60 });
+    const chk = p(t, 11.3 + j * .15, 12.0 + j * .15);
+    L.fill.style.width = `${chk * 100}%`;
+    tf(L.ok, { o: E.out(p(t, 12.0 + j * .15, 12.2 + j * .15)), s: E.back(p(t, 12.0 + j * .15, 12.3 + j * .15)) });
+    const draw = E.io(p(t, 12.2 + j * .3, 13.9 + j * .3));
+    // lane 3 pauses at the gate, loops, then finishes
+    let d = draw;
+    if (j === 2) d = Math.min(E.io(p(t, 12.8, 14.2)) * .74, .74) + E.io(p(t, 15.0, 15.5)) * .26;
+    L.path.style.strokeDashoffset = L.len * (1 - d);
+    L.path.style.opacity = in4;
+    L.nodes.forEach(nd => {
+      const shown = d >= nd.frac - .02;
+      const k2 = shown ? 1 : 0;
+      tf(nd.n, { o: k2 * in4, s: shown ? 1 : .5 });
+      if (nd.s === 'gate') {
+        const fail = t >= 14.15 && t < 14.95;
+        nd.n.querySelector('.dot').style.background = t >= 14.95 ? 'var(--success)' : 'var(--terra)';
+        nd.n.querySelector('.dot').style.borderColor = t >= 14.95 ? 'var(--success)' : 'var(--terra)';
+        nd.n.querySelector('.dot').style.transform = `scale(${fail ? 1 + .12 * Math.sin(t * 20) : 1})`;
+        nd.n.querySelector('.tag').style.opacity = t >= 14.15 ? 0 : 1;
+      }
+      // lane 3, M4: its tag sits where the loop lands
+      if (j === 2 && nd === L.nodes[3]) nd.n.querySelector('.tag').style.opacity = t >= 14.3 ? 0 : 1;
+    });
+  });
+  tf(s4.gateX, { o: env(t, 14.15, 14.95, .12, .1) * in4, s: E.back(p(t, 14.15, 14.4)) });
+  tf(s4.gateOk, { o: (t >= 14.95 ? E.out(p(t, 14.95, 15.15)) : 0) * in4, s: E.back(p(t, 14.95, 15.2)) });
+  const lp = E.io(p(t, 14.3, 14.85));
+  const loopLen = 360;
+  s4.loop.style.strokeDasharray = `10 9`;
+  s4.loop.style.opacity = (lp > 0 ? 1 : 0) * in4;
+  s4.loop.style.clipPath = `inset(0 0 ${(1 - lp) * 100}% 0)`;
+  s4.loopHead.style.opacity = lp >= .95 ? in4 : 0;
+  tf(s4.loopLbl, { o: E.out(p(t, 14.5, 14.8)) * in4, y: (1 - E.out(p(t, 14.5, 14.8))) * 14 });
+  tf(s4.approve, { o: E.out(p(t, 13.4, 13.8)) * in4, x: (1 - E.out(p(t, 13.4, 13.8))) * 40 });
+
+  /* S5 — cohort */
+  const in5 = env(t, 16.0, 21.0, .35, .3);
+  const toHours = E.io(p(t, 18.9, 19.35));
+  tf(s5.kicker, { o: in5, y: (1 - E.out(p(t, 16, 16.4))) * 20 });
+  s5.hA.forEach((h, i) => { const k = E.out(p(t, 16.1 + i * .15, 16.6 + i * .15)); tf(h, { o: k * (1 - toHours), y: (1 - k) * 50 - toHours * 50 }); });
+  s5.hB.forEach((h, i) => { const k = E.out(p(t, 19.2 + i * .12, 19.65 + i * .12)); tf(h, { o: k * in5, y: (1 - k) * 50 }); });
+  const cohortOn = in5 * (1 - toHours);
+  const ck5 = E.back(p(t, 16.35, 16.85));
+  tf(s5.case, { o: clamp(ck5) * cohortOn, s: .6 + .4 * ck5 });
+  s5.people.forEach((pp, i) => {
+    const k = E.io(p(t, 16.25 + i * .05, 16.95 + i * .05));
+    const sx = 620, sy = 520 + (i % 3) * 160;
+    tf(pp.n, { o: clamp(k * 2) * cohortOn, x: lerp(sx, pp.x, k), y: lerp(sy, pp.y, k) });
+    const rk = E.out(p(t, 17.0 + i * .06, 17.3 + i * .06));
+    pp.dot.style.background = rk > .5 ? pp.role[1] : 'rgba(255,255,255,.16)';
+    pp.dot.style.color = rk > .5 ? pp.role[2] : '#fff';
+    pp.dot.style.borderColor = rk > .5 ? 'rgba(255,255,255,.9)' : 'rgba(255,255,255,.4)';
+    pp.tag.style.opacity = rk;
+    pp.tag.style.transform = `translateX(-50%) translateY(${(1 - rk) * 10}px)`;
+    const pk = E.io(p(t, 17.35 + i * .05, 17.85 + i * .05));
+    tf(s5.packs[i], { o: (pk > 0 && pk < 1 ? 1 : 0) * cohortOn, x: lerp(CX - 17, pp.x + 21, pk), y: lerp(CY - 21, pp.y + 17, pk) - Math.sin(pk * Math.PI) * 80, r: pk * 360 });
+  });
+  s5.links.forEach((ln, i) => {
+    const k = E.out(p(t, 17.9 + (i % 9) * .04, 18.3 + (i % 9) * .04));
+    ln.style.opacity = k * cohortOn * (.35 + .5 * Math.max(0, Math.sin(t * 5 + i * 1.3)));
+  });
+  tf(s5.live, { o: E.out(p(t, 18.1, 18.4)) * cohortOn, s: E.back(p(t, 18.1, 18.45)) });
+  s5.live.querySelector('.ld').style.opacity = .4 + .6 * Math.abs(Math.sin(t * 6));
+  s5.notes.forEach((n, i) => tf(n, { o: E.out(p(t, 17.0 + i * .2, 17.35 + i * .2)) * cohortOn, x: (1 - E.out(p(t, 17.0 + i * .2, 17.35 + i * .2))) * -30 }));
+  tf(s5.hours, { o: E.out(p(t, 19.2, 19.5)) * in5 });
+  const full = 1000;
+  s5.b0.style.width = `${E.out(p(t, 19.3, 19.8)) * full}px`;
+  const grow = E.out(p(t, 19.45, 19.95)), shrink = E.io(p(t, 20.0, 20.5));
+  s5.b1.style.width = `${grow * full * (1 - .75 * shrink)}px`;
+  s5.b2.style.width = `${shrink * full * .75}px`;
+  s5.b2.style.opacity = shrink;
+  s5.v1.textContent = shrink > .02 ? `${Math.round(lerp(32, 8, shrink))} h live` : '32 h live';
+  s5.l2.style.opacity = E.out(p(t, 20.3, 20.6));
+  s5.v0.style.opacity = E.out(p(t, 19.6, 19.8));
+  s5.v1.style.opacity = E.out(p(t, 19.75, 19.95));
+
+  /* S6 — insight */
+  const in6 = env(t, 21.0, 24.4, .35, .3);
+  tf(s6.kicker, { o: in6, y: (1 - E.out(p(t, 21, 21.4))) * 20 });
+  s6.h.forEach((h, i) => { const k = E.out(p(t, 21.1 + i * .15, 21.6 + i * .15)); tf(h, { o: k * in6, y: (1 - k) * 50 }); });
+  const pk6 = E.out(p(t, 21.15, 21.6));
+  tf(s6.panel, { o: pk6 * in6, x: (1 - pk6) * 120 });
+  s6.cells.forEach(c => {
+    const r = +c.dataset.r, col = +c.dataset.c;
+    const k = p(t, 21.5 + (r + col) * .06, 21.7 + (r + col) * .06);
+    c.style.background = k > .5 ? CELLC[c.dataset.s] : 'var(--mist)';
+    c.style.transform = `scale(${.6 + .4 * E.back(k)})`;
+  });
+  const stuck = s6.cells.find(c => c.dataset.s === 'stuck');
+  const sr = stuck.getBoundingClientRect(), stR = stage.getBoundingClientRect(), scl = stR.width / 1920;
+  const pulse = t > 22.6 ? (t - 22.6) % .8 / .8 : 0;
+  tf(s6.ringNode, { o: (t > 22.6 ? (1 - pulse) : 0) * in6, x: (sr.left - stR.left) / scl + sr.width / scl / 2 - 38, y: (sr.top - stR.top) / scl + sr.height / scl / 2 - 38, s: .6 + pulse * .6 });
+  const tk = E.back(p(t, 22.7, 23.1));
+  tf(s6.toast, { o: clamp(tk) * in6, y: (1 - tk) * 80 });
+  s6.notes.forEach((n, i) => tf(n, { o: E.out(p(t, 21.7 + i * .25, 22.05 + i * .25)) * in6, x: (1 - E.out(p(t, 21.7 + i * .25, 22.05 + i * .25))) * -30 }));
+
+  /* S7 — comparison */
+  const in7 = env(t, 24.4, 27.4, .35, .3);
+  const hk = E.out(p(t, 24.45, 24.9));
+  tf(s7.h, { o: hk * in7, y: (1 - hk) * 40, s: .94 + .06 * hk });
+  tf(s7.hdrL, { o: E.out(p(t, 24.7, 25)) * in7 });
+  tf(s7.hdrR, { o: E.out(p(t, 24.7, 25)) * in7 });
+  s7.rows.forEach((r, i) => {
+    const a = 24.8 + i * .42;
+    const kl = E.out(p(t, a, a + .3));
+    tf(r.l, { o: kl * in7 * (1 - .45 * p(t, a + .35, a + .6)), x: (1 - kl) * -30 });
+    r.strike.style.width = `calc(${E.io(p(t, a + .25, a + .55)) * 100}% + 12px)`;
+    tf(r.arrow, { o: E.out(p(t, a + .35, a + .55)) * in7, x: (1 - E.out(p(t, a + .35, a + .55))) * -20 });
+    const kr = E.back(p(t, a + .4, a + .75));
+    tf(r.r, { o: clamp(kr) * in7, x: (1 - kr) * 60 });
+  });
+
+  /* S8 — end card */
+  const in8 = E.out(p(t, 27.55, 28.1));
+  s8.logo.style.clipPath = `inset(0 ${(1 - E.out(p(t, 27.55, 28.15))) * 100}% 0 0)`;
+  tf(s8.logo, { o: in8 > 0 ? 1 : 0, s: 1.06 - .06 * in8 });
+  const tg = E.out(p(t, 28.05, 28.55));
+  tf(s8.tag, { o: tg, y: (1 - tg) * 40 });
+  const ct = E.back(p(t, 28.5, 28.9));
+  tf(s8.cta, { o: clamp(ct), y: (1 - ct) * 30 });
+
+  progF.style.width = `${(t / DUR) * 100}%`;
+}
+
+/* ───────── fit to window + realtime preview (skipped when rendering frames) ───────── */
+function fit() { const s = Math.min(innerWidth / 1920, innerHeight / 1080); stage.style.transform = `scale(${s})`; }
+window.render = render;
+if (!new URLSearchParams(location.search).has('render')) {
+  fit(); addEventListener('resize', fit);
+  let t0 = performance.now(), paused = false, tp = 0;
+  addEventListener('keydown', e => {
+    if (e.code === 'Space') { paused = !paused; t0 = performance.now() - tp * 1000; }
+    if (e.code === 'ArrowRight') { tp = Math.min(DUR, tp + 1); t0 = performance.now() - tp * 1000; }
+    if (e.code === 'ArrowLeft') { tp = Math.max(0, tp - 1); t0 = performance.now() - tp * 1000; }
+  });
+  (function loop() { if (!paused) tp = ((performance.now() - t0) / 1000) % DUR; render(tp); requestAnimationFrame(loop); })();
+} else { render(0); }
+</script>
+</body>
+</html>
